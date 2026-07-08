@@ -8,9 +8,8 @@ services:
       DOCKER_API_VERSION: "1.40"
     command:
       - --api.dashboard=true
-      - --providers.docker=true
-      - --providers.docker.exposedbydefault=false
       - --providers.file.directory=/etc/traefik/dynamic
+      - --providers.file.watch=true
       - --entrypoints.web.address=:80
       - --entrypoints.websecure.address=:443
       - --entrypoints.mqtt.address=:8883
@@ -24,7 +23,6 @@ services:
       - "443:443"
       - "8883:8883"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./infrastructure/traefik/dynamic:/etc/traefik/dynamic:ro
       - traefik-letsencrypt:/letsencrypt
     networks:

@@ -1,0 +1,90 @@
+http:
+  routers:
+    web:
+      rule: "Host(`uas.ahbvc.org.pt`) || Host(`pilot.uas.ahbvc.org.pt`)"
+      entryPoints:
+        - websecure
+      service: web
+      middlewares:
+        - security-headers
+      tls:
+        certResolver: letsencrypt
+
+    api:
+      rule: "Host(`api.uas.ahbvc.org.pt`)"
+      entryPoints:
+        - websecure
+      service: api
+      middlewares:
+        - security-headers
+      tls:
+        certResolver: letsencrypt
+
+    emqx-dashboard:
+      rule: "Host(`mqtt.uas.ahbvc.org.pt`)"
+      entryPoints:
+        - websecure
+      service: emqx-dashboard
+      middlewares:
+        - security-headers
+      tls:
+        certResolver: letsencrypt
+
+    stream:
+      rule: "Host(`stream.uas.ahbvc.org.pt`)"
+      entryPoints:
+        - websecure
+      service: stream
+      middlewares:
+        - security-headers
+      tls:
+        certResolver: letsencrypt
+
+    storage:
+      rule: "Host(`storage.uas.ahbvc.org.pt`)"
+      entryPoints:
+        - websecure
+      service: storage
+      middlewares:
+        - security-headers
+      tls:
+        certResolver: letsencrypt
+
+  services:
+    web:
+      loadBalancer:
+        servers:
+          - url: "http://web:80"
+    api:
+      loadBalancer:
+        servers:
+          - url: "http://api:8000"
+    emqx-dashboard:
+      loadBalancer:
+        servers:
+          - url: "http://emqx:18083"
+    stream:
+      loadBalancer:
+        servers:
+          - url: "http://mediamtx:8889"
+    storage:
+      loadBalancer:
+        servers:
+          - url: "http://minio:9000"
+
+tcp:
+  routers:
+    mqtt:
+      rule: "HostSNI(`mqtt.uas.ahbvc.org.pt`)"
+      entryPoints:
+        - mqtt
+      service: mqtt
+      tls:
+        certResolver: letsencrypt
+
+  services:
+    mqtt:
+      loadBalancer:
+        servers:
+          - address: "emqx:1883"
+
