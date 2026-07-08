@@ -95,6 +95,7 @@ MQTT_PILOT_PASSWORD=<long-random-password>
 ```
 
 Do not commit the real App Key, App Secret, or Basic License.
+Do not commit the generated EMQX bootstrap CSV. It is ignored by Git.
 
 Generate values on the VPS with:
 
@@ -102,6 +103,50 @@ Generate values on the VPS with:
 uuidgen
 openssl rand -hex 32
 openssl rand -hex 24
+```
+
+After updating `.env` on the VPS, render the EMQX MQTT user bootstrap file:
+
+```bash
+bash scripts/render-emqx-mqtt-users.sh
+docker compose up -d --force-recreate emqx
+docker compose ps emqx
+```
+
+The bootstrap file seeds the `MQTT_PILOT_USERNAME` and `MQTT_PILOT_PASSWORD`
+values into EMQX built-in database authentication. If EMQX was already running
+with a persisted data volume, confirm the user exists in the EMQX dashboard at
+`https://mqtt.uas.ahbvc.org.pt` before testing DJI Pilot 2.
+
+External MQTT smoke test from the VPS:
+
+```bash
+MQTT_PILOT_USERNAME="$(grep -E '^MQTT_PILOT_USERNAME=' .env | tail -n 1 | cut -d= -f2-)"
+MQTT_PILOT_PASSWORD="$(grep -E '^MQTT_PILOT_PASSWORD=' .env | tail -n 1 | cut -d= -f2-)"
+docker run --rm eclipse-mosquitto:2 mosquitto_sub \
+  -h mqtt.uas.ahbvc.org.pt \
+  -p 8883 \
+  --capath /etc/ssl/certs \
+  -u "${MQTT_PILOT_USERNAME}" \
+  -P "${MQTT_PILOT_PASSWORD}" \
+  -t "thing/product/test/osd" \
+  -C 1 \
+  -W 10
+```
+
+In another SSH session, publish a test message:
+
+```bash
+MQTT_PILOT_USERNAME="$(grep -E '^MQTT_PILOT_USERNAME=' .env | tail -n 1 | cut -d= -f2-)"
+MQTT_PILOT_PASSWORD="$(grep -E '^MQTT_PILOT_PASSWORD=' .env | tail -n 1 | cut -d= -f2-)"
+docker run --rm eclipse-mosquitto:2 mosquitto_pub \
+  -h mqtt.uas.ahbvc.org.pt \
+  -p 8883 \
+  --capath /etc/ssl/certs \
+  -u "${MQTT_PILOT_USERNAME}" \
+  -P "${MQTT_PILOT_PASSWORD}" \
+  -t "thing/product/test/osd" \
+  -m '{"test":true}'
 ```
 
 The DJI Quick Start states that App ID, App Key and App License are copied into the

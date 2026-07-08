@@ -15,4 +15,4 @@ htmlcov/
 *.log
 storage/
 data/
-
+infrastructure/emqx/auth-built-in-db-bootstrap.csv

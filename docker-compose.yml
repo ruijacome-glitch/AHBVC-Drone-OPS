@@ -69,6 +69,13 @@ services:
       EMQX_DASHBOARD__DEFAULT_PASSWORD: ${EMQX_DASHBOARD_PASSWORD}
       EMQX_LISTENERS__TCP__DEFAULT__BIND: 0.0.0.0:1883
       EMQX_LISTENERS__SSL__DEFAULT__BIND: 0.0.0.0:8883
+      EMQX_AUTHENTICATION: >-
+        [{mechanism = password_based,
+          backend = built_in_database,
+          user_id_type = username,
+          password_hash_algorithm {name = sha256, salt_position = suffix},
+          bootstrap_file = "/opt/emqx/etc/uas/auth-built-in-db-bootstrap.csv",
+          bootstrap_type = plain}]
     healthcheck:
       test: ["CMD", "/opt/emqx/bin/emqx", "ctl", "status"]
       interval: 15s
@@ -78,6 +85,7 @@ services:
       - emqx-data:/opt/emqx/data
       - emqx-log:/opt/emqx/log
       - ./infrastructure/emqx/acl.conf:/opt/emqx/etc/acl.conf:ro
+      - ./infrastructure/emqx:/opt/emqx/etc/uas:ro
     labels:
       - traefik.enable=true
       - traefik.http.routers.emqx.rule=Host(`mqtt.${ROOT_DOMAIN}`)
