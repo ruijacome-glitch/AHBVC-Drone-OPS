@@ -1,7 +1,7 @@
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Header
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 router = APIRouter(tags=["dji-pilot-to-cloud"])
 
@@ -12,9 +12,11 @@ DJI_DEVICE_TOPOLOGY_DOCS_URL = (
 
 
 class DjiDeviceTopologyData(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     # TODO(DJI Cloud API): populate from registered gateways/drones after validating
     # Matrice 30T/Matrice 4T device_model enum values against official DJI docs.
-    list: list[dict] = Field(default_factory=list)
+    topologies: list[dict[str, Any]] = Field(default_factory=list, alias="list")
 
 
 class DjiDeviceTopologyResponse(BaseModel):
