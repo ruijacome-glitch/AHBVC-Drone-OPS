@@ -111,8 +111,8 @@ async def pilot_jsbridge_config() -> PilotJsBridgeConfigResponse:
         mqtt_password=settings.mqtt_pilot_password,
         ws_host=(
             f"wss://api.{settings.root_domain}/manage/api/v1/workspaces/"
-            f"{settings.dji_workspace_id}/websocket?x-auth-token={settings.dji_pilot_api_token}"
-            if settings.dji_workspace_id and settings.dji_pilot_api_token
+            f"{settings.dji_workspace_id}/websocket"
+            if settings.dji_workspace_id
             else None
         ),
         stream_rtmp_url_template=f"rtmp://{settings.stream_public_host}:1935/live/{{gateway_sn}}",

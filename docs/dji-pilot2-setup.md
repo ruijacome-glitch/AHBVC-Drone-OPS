@@ -164,9 +164,9 @@ Awareness:
 wss://api.uas.ahbvc.org.pt/manage/api/v1/workspaces/<workspace-id>/websocket
 ```
 
-The Pilot JSBridge config endpoint returns this URL as `ws_host` with the Pilot
-API token attached for the initial MVP connection test. The frontend loads the
-DJI `ws` module first and then the `tsa` module.
+The Pilot JSBridge config endpoint returns this URL as `ws_host`. The frontend
+passes the Pilot API token separately when loading the DJI `ws` module, then
+loads the `tsa` module.
 
 Current limitation:
 

@@ -45,7 +45,7 @@ def test_pilot_jsbridge_config_includes_situation_awareness_websocket() -> None:
         assert payload["ws_host"].startswith(
             "wss://api.uas.ahbvc.org.pt/manage/api/v1/workspaces/"
         )
-        assert "x-auth-token=test-token" in payload["ws_host"]
+        assert "x-auth-token" not in payload["ws_host"]
     finally:
         for key, value in previous_values.items():
             setattr(settings, key, value)
