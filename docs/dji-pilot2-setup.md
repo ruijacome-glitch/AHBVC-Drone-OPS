@@ -117,6 +117,7 @@ The bootstrap file seeds the `MQTT_PILOT_USERNAME` and `MQTT_PILOT_PASSWORD`
 values into EMQX built-in database authentication. If EMQX was already running
 with a persisted data volume, confirm the user exists in the EMQX dashboard at
 `https://mqtt.uas.ahbvc.org.pt` before testing DJI Pilot 2.
+The generated file is readable by the EMQX container and remains ignored by Git.
 
 External MQTT smoke test from the VPS:
 

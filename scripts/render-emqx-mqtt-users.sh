@@ -53,6 +53,6 @@ umask 077
   printf '%s,%s,false\n' "${MQTT_USERNAME}" "${MQTT_PASSWORD}"
 } > "${OUTPUT_FILE}"
 
-chmod 600 "${OUTPUT_FILE}"
+chmod 644 "${OUTPUT_FILE}"
 echo "Rendered EMQX MQTT user bootstrap file: ${OUTPUT_FILE}"
 echo "No secret value was printed. Recreate EMQX to apply it."
