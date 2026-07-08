@@ -279,56 +279,72 @@ function PilotPage() {
 
     try {
       setStep("license", "running", "A chamar platformVerifyLicense.");
-      const licenseResult = bridgeCall("Licenca", (bridge) =>
-        requireBridgeMethod(bridge.platformVerifyLicense, "platformVerifyLicense")(
+      const licenseResult = bridgeCall("Licenca", (bridge) => {
+        if (!bridge.platformVerifyLicense) {
+          throw new Error("Metodo JSBridge indisponivel: platformVerifyLicense");
+        }
+        return bridge.platformVerifyLicense(
           config.app_id ?? "",
           config.app_key ?? "",
           config.app_basic_license ?? "",
-        ),
-      );
+        );
+      });
       if (licenseResult.code !== 0) throw new Error(licenseResult.message ?? "Falha na licenca");
       setStep("license", "ok", licenseResult.message ?? "Licenca verificada.");
 
       setStep("workspace", "running", "A chamar platformSetWorkspaceId.");
-      const workspaceResult = bridgeCall("Workspace", (bridge) =>
-        requireBridgeMethod(bridge.platformSetWorkspaceId, "platformSetWorkspaceId")(
-          config.workspace_id ?? "",
-        ),
-      );
+      const workspaceResult = bridgeCall("Workspace", (bridge) => {
+        if (!bridge.platformSetWorkspaceId) {
+          throw new Error("Metodo JSBridge indisponivel: platformSetWorkspaceId");
+        }
+        return bridge.platformSetWorkspaceId(config.workspace_id ?? "");
+      });
       if (workspaceResult.code !== 0) {
         throw new Error(workspaceResult.message ?? "Falha ao definir workspace");
       }
       setStep("workspace", "ok", config.workspace_id ?? "Workspace definido.");
 
       setStep("platform", "running", "A chamar platformSetInformation.");
-      const platformResult = bridgeCall("Platform", (bridge) =>
-        requireBridgeMethod(bridge.platformSetInformation, "platformSetInformation")(
+      const platformResult = bridgeCall("Platform", (bridge) => {
+        if (!bridge.platformSetInformation) {
+          throw new Error("Metodo JSBridge indisponivel: platformSetInformation");
+        }
+        return bridge.platformSetInformation(
           config.platform_name,
           config.workspace_name,
           config.platform_description,
-        ),
-      );
+        );
+      });
       if (platformResult.code !== 0) {
         throw new Error(platformResult.message ?? "Falha ao definir plataforma");
       }
       setStep("platform", "ok", `${config.platform_name} / ${config.workspace_name}`);
 
       setStep("api", "running", "A carregar API module.");
-      const apiResult = bridgeCall("API module", (bridge) =>
-        requireBridgeMethod(bridge.platformLoadComponent, "platformLoadComponent")(
+      const apiResult = bridgeCall("API module", (bridge) => {
+        if (!bridge.platformLoadComponent) {
+          throw new Error("Metodo JSBridge indisponivel: platformLoadComponent");
+        }
+        return bridge.platformLoadComponent(
           "api",
           JSON.stringify({ host: config.api_host, token: config.api_token }),
-        ),
-      );
+        );
+      });
       if (apiResult.code !== 0) throw new Error(apiResult.message ?? "Falha no modulo API");
-      bridgeCall("API token", (bridge) =>
-        requireBridgeMethod(bridge.apiSetToken, "apiSetToken")(config.api_token ?? ""),
-      );
+      bridgeCall("API token", (bridge) => {
+        if (!bridge.apiSetToken) {
+          throw new Error("Metodo JSBridge indisponivel: apiSetToken");
+        }
+        return bridge.apiSetToken(config.api_token ?? "");
+      });
       setStep("api", "ok", config.api_host);
 
       setStep("thing", "running", "A carregar thing module e iniciar MQTT.");
-      const thingResult = bridgeCall("Thing module", (bridge) =>
-        requireBridgeMethod(bridge.platformLoadComponent, "platformLoadComponent")(
+      const thingResult = bridgeCall("Thing module", (bridge) => {
+        if (!bridge.platformLoadComponent) {
+          throw new Error("Metodo JSBridge indisponivel: platformLoadComponent");
+        }
+        return bridge.platformLoadComponent(
           "thing",
           JSON.stringify({
             host: config.mqtt_url,
@@ -336,16 +352,19 @@ function PilotPage() {
             username: config.mqtt_username,
             password: config.mqtt_password,
           }),
-        ),
-      );
+        );
+      });
       if (thingResult.code !== 0) throw new Error(thingResult.message ?? "Falha no modulo MQTT");
-      bridgeCall("Thing connect", (bridge) =>
-        requireBridgeMethod(bridge.thingConnect, "thingConnect")(
+      bridgeCall("Thing connect", (bridge) => {
+        if (!bridge.thingConnect) {
+          throw new Error("Metodo JSBridge indisponivel: thingConnect");
+        }
+        return bridge.thingConnect(
           config.mqtt_username ?? "",
           config.mqtt_password ?? "",
           "uasPilotBridgeThingCallback",
-        ),
-      );
+        );
+      });
       setStep("thing", "ok", config.mqtt_url);
 
       setStep("tsa", "skipped", "Pendente: falta implementar e publicar WebSocket ws_host.");
@@ -410,14 +429,6 @@ function PilotPage() {
       </motion.section>
     </main>
   );
-}
-
-function requireBridgeMethod<T extends (...args: any[]) => string | void>(
-  method: T | undefined,
-  name: string,
-): T {
-  if (!method) throw new Error(`Metodo JSBridge indisponivel: ${name}`);
-  return method;
 }
 
 function ConfigRow({ label, value }: { label: string; value: string }) {
