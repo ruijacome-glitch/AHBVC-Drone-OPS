@@ -155,11 +155,45 @@ front-end configuration so the H5 page can call `window.djiBridge.platformVerify
 This platform serves those values only through the Pilot JSBridge config endpoint and
 does not expose `DJI_APP_SECRET` to the browser.
 
+## Situation Awareness WebSocket
+
+The MVP exposes a minimal authenticated WebSocket for DJI Pilot 2 Situation
+Awareness:
+
+```text
+wss://api.uas.ahbvc.org.pt/manage/api/v1/workspaces/<workspace-id>/websocket
+```
+
+The Pilot JSBridge config endpoint returns this URL as `ws_host` with the Pilot
+API token attached for the initial MVP connection test. The frontend loads the
+DJI `ws` module first and then the `tsa` module.
+
+Current limitation:
+
+```text
+TODO(DJI Cloud API): emit device_osd, device_online, device_offline and
+device_update_topo only after validating the official DJI message schemas and
+testing with the real controller/drone.
+```
+
+Useful VPS checks during the Pilot 2 test:
+
+```bash
+cd /opt/uas-platform
+docker compose logs -f api emqx
+```
+
+```bash
+cd /opt/uas-platform
+docker compose exec emqx /opt/emqx/bin/emqx ctl clients list
+```
+
 ## Do Not Start Phase 3 Until
 
 - Pilot 2 opens `pilot.uas.ahbvc.org.pt`.
 - The API healthcheck is green.
 - DJI Developer Portal credentials are in `.env`.
 - MQTT TLS connection succeeds from Pilot 2.
+- The DJI `ws` and `tsa` modules load without an immediate JSBridge error.
 - At least one gateway/controller serial is known.
 - The first MQTT packet is visible in EMQX logs or dashboard.

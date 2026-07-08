@@ -109,12 +109,17 @@ async def pilot_jsbridge_config() -> PilotJsBridgeConfigResponse:
         mqtt_url=f"tcp://{settings.mqtt_public_host}:{settings.mqtt_tls_port}",
         mqtt_username=settings.mqtt_pilot_username,
         mqtt_password=settings.mqtt_pilot_password,
-        ws_host=None,
+        ws_host=(
+            f"wss://api.{settings.root_domain}/manage/api/v1/workspaces/"
+            f"{settings.dji_workspace_id}/websocket?x-auth-token={settings.dji_pilot_api_token}"
+            if settings.dji_workspace_id and settings.dji_pilot_api_token
+            else None
+        ),
         stream_rtmp_url_template=f"rtmp://{settings.stream_public_host}:1935/live/{{gateway_sn}}",
         docs_url="https://developer.dji.com/doc/cloud-api-tutorial/en/api-reference/pilot-to-cloud/jsbridge.html",
         todo=(
-            "TODO(DJI Cloud API): implement WebSocket ws module before loading TSA; "
-            "validate MQTT auth and module parameters with DJI Pilot 2 hardware."
+            "TODO(DJI Cloud API): validate ws/tsa module parameters and Situation "
+            "Awareness event payloads with the official DJI documentation and real hardware."
         ),
     )
 

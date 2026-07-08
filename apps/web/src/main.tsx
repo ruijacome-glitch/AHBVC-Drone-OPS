@@ -367,7 +367,31 @@ function PilotPage() {
       });
       setStep("thing", "ok", config.mqtt_url);
 
-      setStep("tsa", "skipped", "Pendente: falta implementar e publicar WebSocket ws_host.");
+      if (!config.ws_host) {
+        setStep("tsa", "skipped", "Pendente: falta configurar ws_host.");
+      } else {
+        setStep("tsa", "running", "A carregar modulo WebSocket.");
+        const wsResult = bridgeCall("WS module", (bridge) => {
+          if (!bridge.platformLoadComponent) {
+            throw new Error("Metodo JSBridge indisponivel: platformLoadComponent");
+          }
+          return bridge.platformLoadComponent(
+            "ws",
+            JSON.stringify({ host: config.ws_host, token: config.api_token }),
+          );
+        });
+        if (wsResult.code !== 0) throw new Error(wsResult.message ?? "Falha no modulo WS");
+
+        setStep("tsa", "running", "A carregar modulo TSA.");
+        const tsaResult = bridgeCall("TSA module", (bridge) => {
+          if (!bridge.platformLoadComponent) {
+            throw new Error("Metodo JSBridge indisponivel: platformLoadComponent");
+          }
+          return bridge.platformLoadComponent("tsa", JSON.stringify({}));
+        });
+        if (tsaResult.code !== 0) throw new Error(tsaResult.message ?? "Falha no modulo TSA");
+        setStep("tsa", "ok", "WebSocket/TSA carregado; a aguardar dados reais do drone.");
+      }
       setControllerSn(window.djiBridge?.platformGetRemoteControllerSN?.() ?? "--");
       setAircraftSn(window.djiBridge?.platformGetAircraftSN?.() ?? "--");
     } catch (err) {
