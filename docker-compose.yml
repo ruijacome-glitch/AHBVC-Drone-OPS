@@ -92,7 +92,7 @@ services:
     image: bluenviron/mediamtx:1.9.3
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:9997/v3/config/global/get"]
+      test: ["CMD", "/mediamtx", "--version"]
       interval: 15s
       timeout: 5s
       retries: 10
