@@ -2,7 +2,7 @@ name: uas-platform
 
 services:
   traefik:
-    image: traefik:v3.1
+    image: traefik:v3.5.3
     restart: unless-stopped
     command:
       - --api.dashboard=true
