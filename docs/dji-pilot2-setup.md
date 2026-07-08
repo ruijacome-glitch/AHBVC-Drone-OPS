@@ -14,6 +14,7 @@ https://developer.dji.com/doc/cloud-api-tutorial/en/
    - App ID
    - App Key
    - App Secret
+   - App Basic License
    - Workspace ID or equivalent workspace identifier used by the Cloud API
 4. Add the production domains:
    - `https://pilot.uas.ahbvc.org.pt`
@@ -76,6 +77,22 @@ mqtt.uas.ahbvc.org.pt:8883
 - `infrastructure/emqx/acl.conf`
   - Replace development ACLs with least-privilege DJI topic ACLs.
 
+## Local Credentials
+
+The DJI app has been created in the Developer Portal as a Cloud API app. Store real values only in the local `.env` file or in the production secret store.
+
+Required variables:
+
+```env
+DJI_APP_ID=
+DJI_APP_KEY=
+DJI_APP_SECRET=
+DJI_APP_BASIC_LICENSE=
+DJI_WORKSPACE_ID=
+```
+
+Do not commit the real App Key, App Secret, or Basic License.
+
 ## Do Not Start Phase 3 Until
 
 - Pilot 2 opens `pilot.uas.ahbvc.org.pt`.
@@ -84,4 +101,3 @@ mqtt.uas.ahbvc.org.pt:8883
 - MQTT TLS connection succeeds from Pilot 2.
 - At least one gateway/controller serial is known.
 - The first MQTT packet is visible in EMQX logs or dashboard.
-

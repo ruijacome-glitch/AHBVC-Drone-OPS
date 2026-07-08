@@ -18,6 +18,9 @@ class PilotBootstrapResponse(BaseModel):
     mqtt_host: str
     mqtt_port: int
     stream_rtmp_url_template: str
+    dji_app_id_configured: bool
+    dji_app_key_configured: bool
+    dji_basic_license_configured: bool
     docs_url: str
     todo: str
 
@@ -49,6 +52,9 @@ async def pilot_bootstrap() -> PilotBootstrapResponse:
         mqtt_host=settings.mqtt_public_host,
         mqtt_port=settings.mqtt_tls_port,
         stream_rtmp_url_template=f"rtmp://{settings.stream_public_host}:1935/live/{{gateway_sn}}",
+        dji_app_id_configured=bool(settings.dji_app_id),
+        dji_app_key_configured=bool(settings.dji_app_key),
+        dji_basic_license_configured=bool(settings.dji_app_basic_license),
         docs_url=str(settings.dji_cloud_api_docs_url),
         todo=DJI_DOCS_NOTE,
     )
@@ -60,7 +66,8 @@ async def pilot_auth(_: PilotAuthRequest) -> dict[str, str]:
         status_code=status.HTTP_501_NOT_IMPLEMENTED,
         detail=(
             f"{DJI_DOCS_NOTE} Configure DJI Developer Portal credentials first: "
-            "App ID, App Key/App Secret, workspace identifier, and Pilot 2 Open Platform URL."
+            "App ID, App Key/App Secret, App Basic License, workspace identifier, "
+            "and Pilot 2 Open Platform URL."
         ),
     )
 
@@ -95,4 +102,3 @@ async def mqtt_topics(gateway_sn: str) -> dict[str, list[str] | str]:
         f"thing/product/{gateway_sn}/property/set_reply",
     ]
     return {"gateway_sn": gateway_sn, "subscribe_topics": topics, "todo": DJI_DOCS_NOTE}
-
