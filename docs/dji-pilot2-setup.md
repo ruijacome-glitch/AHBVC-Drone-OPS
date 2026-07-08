@@ -15,7 +15,7 @@ https://developer.dji.com/doc/cloud-api-tutorial/en/
    - App Key
    - App Secret
    - App Basic License
-   - Workspace ID or equivalent workspace identifier used by the Cloud API
+   - Workspace ID as a UUID used by the Cloud API JSBridge
 4. Add the production domains:
    - `https://pilot.uas.ahbvc.org.pt`
    - `https://api.uas.ahbvc.org.pt`
@@ -88,10 +88,26 @@ DJI_APP_ID=
 DJI_APP_KEY=
 DJI_APP_SECRET=
 DJI_APP_BASIC_LICENSE=
-DJI_WORKSPACE_ID=
+DJI_WORKSPACE_ID=<uuid>
+DJI_PILOT_API_TOKEN=<long-random-token>
+MQTT_PILOT_USERNAME=pilot
+MQTT_PILOT_PASSWORD=<long-random-password>
 ```
 
 Do not commit the real App Key, App Secret, or Basic License.
+
+Generate values on the VPS with:
+
+```bash
+uuidgen
+openssl rand -hex 32
+openssl rand -hex 24
+```
+
+The DJI Quick Start states that App ID, App Key and App License are copied into the
+front-end configuration so the H5 page can call `window.djiBridge.platformVerifyLicense`.
+This platform serves those values only through the Pilot JSBridge config endpoint and
+does not expose `DJI_APP_SECRET` to the browser.
 
 ## Do Not Start Phase 3 Until
 

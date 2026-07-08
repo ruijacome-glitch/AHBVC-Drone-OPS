@@ -68,7 +68,9 @@ input {
 .metric-card span,
 .map-footer span,
 .definition-list dd,
-.config-row span {
+.config-row span,
+.status-tile span,
+.setup-step span {
   color: var(--color-muted);
 }
 
@@ -287,31 +289,77 @@ h1 {
   text-align: right;
 }
 
-.pilot-form {
+.pilot-status-grid {
   display: grid;
-  gap: 14px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 20px 0 8px;
 }
 
-.pilot-form label {
+.status-tile {
   display: grid;
-  gap: 6px;
-  font-weight: 700;
-}
-
-.pilot-form input {
-  min-height: 46px;
+  gap: 4px;
+  min-height: 76px;
+  padding: 12px;
   border: 1px solid var(--color-border);
   border-radius: 8px;
-  padding: 10px 12px;
+  background: #f8fafc;
 }
 
-.pilot-form input:focus {
-  border-color: var(--color-accent);
-  outline: 3px solid rgba(37, 99, 235, 0.18);
+.status-tile strong {
+  overflow-wrap: anywhere;
+  font-family: "Fira Code", monospace;
+  font-size: 0.94rem;
 }
 
-.pilot-form button {
+.step-list {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.setup-step {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.setup-step svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: var(--color-muted);
+}
+
+.setup-step div {
+  display: grid;
+  gap: 2px;
+}
+
+.setup-step.ok svg {
+  color: var(--color-ok);
+}
+
+.setup-step.error svg,
+.setup-step.skipped svg {
+  color: var(--color-warning);
+}
+
+.setup-step.running {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+}
+
+.setup-step.running svg {
+  color: var(--color-accent);
+}
+
+.primary-action {
   min-height: 48px;
+  width: 100%;
   cursor: pointer;
   border: 0;
   border-radius: 8px;
@@ -321,12 +369,23 @@ h1 {
   transition: transform 180ms ease, background 180ms ease;
 }
 
-.pilot-form button:hover {
+.primary-action:hover {
   background: #b91c1c;
 }
 
-.pilot-form button:active {
+.primary-action:active {
   transform: scale(0.98);
+}
+
+.primary-action:disabled {
+  cursor: not-allowed;
+  background: #94a3b8;
+  transform: none;
+}
+
+.primary-action:focus-visible {
+  outline: 3px solid rgba(37, 99, 235, 0.28);
+  outline-offset: 3px;
 }
 
 .error-text {
@@ -355,6 +414,7 @@ h1 {
   }
 
   .metric-grid,
+  .pilot-status-grid,
   .ops-grid {
     grid-template-columns: 1fr;
   }

@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     dji_app_basic_license: str | None = None
     dji_workspace_id: str | None = None
     dji_workspace_name: str = "AHBVC UAS Platform"
+    dji_pilot_api_token: str | None = None
     dji_cloud_api_docs_url: AnyUrl = "https://developer.dji.com/doc/cloud-api-tutorial/en/"
 
     mqtt_public_host: str = "mqtt.uas.ahbvc.org.pt"

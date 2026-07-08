@@ -1,22 +1,119 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { Activity, Battery, MapPin, Radio, ShieldCheck, Wifi } from "lucide-react";
+import {
+  Activity,
+  Battery,
+  CheckCircle2,
+  CircleDashed,
+  MapPin,
+  Radio,
+  ShieldAlert,
+  ShieldCheck,
+  Wifi,
+  XCircle,
+} from "lucide-react";
 import { motion, useReducedMotion } from "framer-motion";
 
 import "./styles.css";
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 
-type Bootstrap = {
+type JsBridgeConfig = {
+  setup_ready: boolean;
+  missing_config: string[];
+  app_id: string | null;
+  app_key: string | null;
+  app_basic_license: string | null;
   workspace_id: string | null;
   workspace_name: string;
+  platform_name: string;
+  platform_description: string;
   api_host: string;
-  mqtt_host: string;
-  mqtt_port: number;
+  api_token: string | null;
+  mqtt_url: string;
+  mqtt_username: string | null;
+  mqtt_password: string | null;
+  ws_host: string | null;
   stream_rtmp_url_template: string;
   docs_url: string;
   todo: string;
 };
+
+type BridgeResult = {
+  code: number;
+  message?: string;
+  data?: unknown;
+};
+
+type DjiBridge = {
+  platformVerifyLicense?: (appId: string, appKey: string, license: string) => string | void;
+  platformSetWorkspaceId?: (uuid: string) => string | void;
+  platformSetInformation?: (
+    platformName: string,
+    workspaceName: string,
+    description: string,
+  ) => string | void;
+  platformLoadComponent?: (name: string, param: string) => string | void;
+  thingConnect?: (username: string, password: string, callback: string) => string | void;
+  apiSetToken?: (token: string) => string | void;
+  platformGetRemoteControllerSN?: () => string;
+  platformGetAircraftSN?: () => string;
+};
+
+declare global {
+  interface Window {
+    djiBridge?: DjiBridge;
+    uasPilotBridgeThingCallback?: (payload: string) => void;
+  }
+}
+
+type StepStatus = "pending" | "running" | "ok" | "error" | "skipped";
+
+type SetupStep = {
+  id: string;
+  label: string;
+  status: StepStatus;
+  detail: string;
+};
+
+const setupSteps: SetupStep[] = [
+  {
+    id: "license",
+    label: "Verificar licenca Cloud API",
+    status: "pending",
+    detail: "A aguardar DJI Pilot 2 JSBridge.",
+  },
+  {
+    id: "workspace",
+    label: "Definir workspace",
+    status: "pending",
+    detail: "Workspace UUID enviado para o Pilot.",
+  },
+  {
+    id: "platform",
+    label: "Publicar informacao da plataforma",
+    status: "pending",
+    detail: "Nome e descricao visiveis no portal Cloud Services.",
+  },
+  {
+    id: "api",
+    label: "Carregar modulo API",
+    status: "pending",
+    detail: "HTTPS com X-Auth-Token para endpoints Pilot to Cloud.",
+  },
+  {
+    id: "thing",
+    label: "Carregar modulo MQTT",
+    status: "pending",
+    detail: "Ligacao thing ao EMQX para telemetria.",
+  },
+  {
+    id: "tsa",
+    label: "TSA via WebSocket",
+    status: "pending",
+    detail: "Pendente ate implementarmos o modulo ws.",
+  },
+];
 
 const metrics = [
   { label: "Drones simultaneos", value: "0 / 2", icon: Radio },
@@ -124,56 +221,203 @@ function OpsDashboard() {
 }
 
 function PilotPage() {
-  const [bootstrap, setBootstrap] = React.useState<Bootstrap | null>(null);
+  const reduceMotion = useReducedMotion();
+  const [config, setConfig] = React.useState<JsBridgeConfig | null>(null);
+  const [steps, setSteps] = React.useState<SetupStep[]>(setupSteps);
+  const [controllerSn, setControllerSn] = React.useState<string>("--");
+  const [aircraftSn, setAircraftSn] = React.useState<string>("--");
+  const [isConfiguring, setIsConfiguring] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    fetch(`${apiBaseUrl}/api/v1/dji/pilot/bootstrap`)
+    window.uasPilotBridgeThingCallback = (payload: string) => {
+      setStep("thing", "ok", `Callback MQTT: ${payload}`);
+    };
+
+    fetch(`${apiBaseUrl}/api/v1/dji/pilot/jsbridge-config`)
       .then((response) => {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        return response.json() as Promise<Bootstrap>;
+        return response.json() as Promise<JsBridgeConfig>;
       })
-      .then(setBootstrap)
+      .then(setConfig)
       .catch((err: Error) => setError(err.message));
   }, []);
 
+  function setStep(id: string, status: StepStatus, detail: string) {
+    setSteps((current) =>
+      current.map((step) => (step.id === id ? { ...step, status, detail } : step)),
+    );
+  }
+
+  function bridgeCall(label: string, action: (bridge: DjiBridge) => string | void): BridgeResult {
+    const bridge = window.djiBridge;
+    if (!bridge) {
+      throw new Error(`${label}: window.djiBridge indisponivel. Abre esta pagina dentro do DJI Pilot 2.`);
+    }
+
+    const raw = action(bridge);
+    if (!raw) return { code: 0, message: "success" };
+
+    try {
+      return JSON.parse(raw) as BridgeResult;
+    } catch {
+      return { code: 0, message: raw };
+    }
+  }
+
+  async function runPilotSetup() {
+    if (!config) return;
+    setError(null);
+    setIsConfiguring(true);
+    setSteps(setupSteps);
+
+    if (!config.setup_ready) {
+      setError(`Configuracao incompleta no servidor: ${config.missing_config.join(", ")}`);
+      setIsConfiguring(false);
+      return;
+    }
+
+    try {
+      setStep("license", "running", "A chamar platformVerifyLicense.");
+      const licenseResult = bridgeCall("Licenca", (bridge) =>
+        requireBridgeMethod(bridge.platformVerifyLicense, "platformVerifyLicense")(
+          config.app_id ?? "",
+          config.app_key ?? "",
+          config.app_basic_license ?? "",
+        ),
+      );
+      if (licenseResult.code !== 0) throw new Error(licenseResult.message ?? "Falha na licenca");
+      setStep("license", "ok", licenseResult.message ?? "Licenca verificada.");
+
+      setStep("workspace", "running", "A chamar platformSetWorkspaceId.");
+      const workspaceResult = bridgeCall("Workspace", (bridge) =>
+        requireBridgeMethod(bridge.platformSetWorkspaceId, "platformSetWorkspaceId")(
+          config.workspace_id ?? "",
+        ),
+      );
+      if (workspaceResult.code !== 0) {
+        throw new Error(workspaceResult.message ?? "Falha ao definir workspace");
+      }
+      setStep("workspace", "ok", config.workspace_id ?? "Workspace definido.");
+
+      setStep("platform", "running", "A chamar platformSetInformation.");
+      const platformResult = bridgeCall("Platform", (bridge) =>
+        requireBridgeMethod(bridge.platformSetInformation, "platformSetInformation")(
+          config.platform_name,
+          config.workspace_name,
+          config.platform_description,
+        ),
+      );
+      if (platformResult.code !== 0) {
+        throw new Error(platformResult.message ?? "Falha ao definir plataforma");
+      }
+      setStep("platform", "ok", `${config.platform_name} / ${config.workspace_name}`);
+
+      setStep("api", "running", "A carregar API module.");
+      const apiResult = bridgeCall("API module", (bridge) =>
+        requireBridgeMethod(bridge.platformLoadComponent, "platformLoadComponent")(
+          "api",
+          JSON.stringify({ host: config.api_host, token: config.api_token }),
+        ),
+      );
+      if (apiResult.code !== 0) throw new Error(apiResult.message ?? "Falha no modulo API");
+      bridgeCall("API token", (bridge) =>
+        requireBridgeMethod(bridge.apiSetToken, "apiSetToken")(config.api_token ?? ""),
+      );
+      setStep("api", "ok", config.api_host);
+
+      setStep("thing", "running", "A carregar thing module e iniciar MQTT.");
+      const thingResult = bridgeCall("Thing module", (bridge) =>
+        requireBridgeMethod(bridge.platformLoadComponent, "platformLoadComponent")(
+          "thing",
+          JSON.stringify({
+            host: config.mqtt_url,
+            connectCallback: "uasPilotBridgeThingCallback",
+            username: config.mqtt_username,
+            password: config.mqtt_password,
+          }),
+        ),
+      );
+      if (thingResult.code !== 0) throw new Error(thingResult.message ?? "Falha no modulo MQTT");
+      bridgeCall("Thing connect", (bridge) =>
+        requireBridgeMethod(bridge.thingConnect, "thingConnect")(
+          config.mqtt_username ?? "",
+          config.mqtt_password ?? "",
+          "uasPilotBridgeThingCallback",
+        ),
+      );
+      setStep("thing", "ok", config.mqtt_url);
+
+      setStep("tsa", "skipped", "Pendente: falta implementar e publicar WebSocket ws_host.");
+      setControllerSn(window.djiBridge?.platformGetRemoteControllerSN?.() ?? "--");
+      setAircraftSn(window.djiBridge?.platformGetAircraftSN?.() ?? "--");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro desconhecido na configuracao Pilot.");
+    } finally {
+      setIsConfiguring(false);
+    }
+  }
+
   return (
     <main className="pilot-page">
-      <section className="pilot-card" aria-labelledby="pilot-title">
+      <motion.section
+        className="pilot-card"
+        aria-labelledby="pilot-title"
+        initial={reduceMotion ? false : { opacity: 0, y: 10 }}
+        animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
+        transition={{ duration: 0.22 }}
+      >
         <p className="eyebrow">DJI Pilot 2 Open Platform</p>
         <h1 id="pilot-title">UAS Platform</h1>
         <p className="intro">
-          Portal tecnico para validar a ligacao do DJI Pilot 2 aos servicos Cloud API da AHBVC.
+          Portal tecnico para autenticar o JSBridge, definir workspace e iniciar a ligacao Cloud API.
         </p>
+
+        <div className="pilot-status-grid" aria-live="polite">
+          <StatusTile label="JSBridge" value={window.djiBridge ? "Disponivel" : "Fora do Pilot"} />
+          <StatusTile label="Comando" value={controllerSn} />
+          <StatusTile label="Drone" value={aircraftSn} />
+        </div>
 
         <div className="config-list" aria-live="polite">
           {error ? <p className="error-text">API indisponivel: {error}</p> : null}
-          {bootstrap ? (
+          {config ? (
             <>
-              <ConfigRow label="Workspace" value={bootstrap.workspace_name} />
-              <ConfigRow label="API" value={bootstrap.api_host} />
-              <ConfigRow label="MQTT TLS" value={`${bootstrap.mqtt_host}:${bootstrap.mqtt_port}`} />
-              <ConfigRow label="RTMP" value={bootstrap.stream_rtmp_url_template} />
+              <ConfigRow label="Workspace" value={config.workspace_id ?? "Por configurar"} />
+              <ConfigRow label="API" value={config.api_host} />
+              <ConfigRow label="MQTT" value={config.mqtt_url} />
+              <ConfigRow label="WebSocket" value={config.ws_host ?? "Pendente"} />
             </>
           ) : (
             <p>A carregar configuracao...</p>
           )}
         </div>
 
-        <form className="pilot-form">
-          <label>
-            Utilizador Pilot
-            <input autoComplete="username" name="username" type="text" />
-          </label>
-          <label>
-            Palavra-passe
-            <input autoComplete="current-password" name="password" type="password" />
-          </label>
-          <button type="button">Validar depois da configuracao DJI</button>
-        </form>
-      </section>
+        <div className="step-list">
+          {steps.map((step) => (
+            <SetupStepRow key={step.id} step={step} />
+          ))}
+        </div>
+
+        <button
+          className="primary-action"
+          type="button"
+          disabled={!config || isConfiguring}
+          onClick={runPilotSetup}
+        >
+          {isConfiguring ? "A configurar..." : "Configurar DJI Pilot 2"}
+        </button>
+      </motion.section>
     </main>
   );
+}
+
+function requireBridgeMethod<T extends (...args: any[]) => string | void>(
+  method: T | undefined,
+  name: string,
+): T {
+  if (!method) throw new Error(`Metodo JSBridge indisponivel: ${name}`);
+  return method;
 }
 
 function ConfigRow({ label, value }: { label: string; value: string }) {
@@ -185,9 +429,38 @@ function ConfigRow({ label, value }: { label: string; value: string }) {
   );
 }
 
+function StatusTile({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="status-tile">
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function SetupStepRow({ step }: { step: SetupStep }) {
+  const Icon =
+    step.status === "ok"
+      ? CheckCircle2
+      : step.status === "error"
+        ? XCircle
+        : step.status === "skipped"
+          ? ShieldAlert
+          : CircleDashed;
+
+  return (
+    <div className={`setup-step ${step.status}`}>
+      <Icon aria-hidden="true" size={20} />
+      <div>
+        <strong>{step.label}</strong>
+        <span>{step.detail}</span>
+      </div>
+    </div>
+  );
+}
+
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <App />
   </React.StrictMode>,
 );
-

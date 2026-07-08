@@ -25,6 +25,27 @@ class PilotBootstrapResponse(BaseModel):
     todo: str
 
 
+class PilotJsBridgeConfigResponse(BaseModel):
+    setup_ready: bool
+    missing_config: list[str]
+    app_id: str | None
+    app_key: str | None
+    app_basic_license: str | None
+    workspace_id: str | None
+    workspace_name: str
+    platform_name: str
+    platform_description: str
+    api_host: str
+    api_token: str | None
+    mqtt_url: str
+    mqtt_username: str | None
+    mqtt_password: str | None
+    ws_host: str | None
+    stream_rtmp_url_template: str
+    docs_url: str
+    todo: str
+
+
 class PilotAuthRequest(BaseModel):
     username: str = Field(min_length=1)
     password: str = Field(min_length=1)
@@ -57,6 +78,44 @@ async def pilot_bootstrap() -> PilotBootstrapResponse:
         dji_basic_license_configured=bool(settings.dji_app_basic_license),
         docs_url=str(settings.dji_cloud_api_docs_url),
         todo=DJI_DOCS_NOTE,
+    )
+
+
+@router.get("/pilot/jsbridge-config", response_model=PilotJsBridgeConfigResponse)
+async def pilot_jsbridge_config() -> PilotJsBridgeConfigResponse:
+    required_values = {
+        "DJI_APP_ID": settings.dji_app_id,
+        "DJI_APP_KEY": settings.dji_app_key,
+        "DJI_APP_BASIC_LICENSE": settings.dji_app_basic_license,
+        "DJI_WORKSPACE_ID": settings.dji_workspace_id,
+        "DJI_PILOT_API_TOKEN": settings.dji_pilot_api_token,
+        "MQTT_PILOT_USERNAME": settings.mqtt_pilot_username,
+        "MQTT_PILOT_PASSWORD": settings.mqtt_pilot_password,
+    }
+    missing_config = [key for key, value in required_values.items() if not value]
+
+    return PilotJsBridgeConfigResponse(
+        setup_ready=not missing_config,
+        missing_config=missing_config,
+        app_id=settings.dji_app_id,
+        app_key=settings.dji_app_key,
+        app_basic_license=settings.dji_app_basic_license,
+        workspace_id=settings.dji_workspace_id,
+        workspace_name=settings.dji_workspace_name,
+        platform_name="UAS Platform",
+        platform_description="AHBVC DJI Enterprise operations platform.",
+        api_host=f"https://api.{settings.root_domain}",
+        api_token=settings.dji_pilot_api_token,
+        mqtt_url=f"tcp://{settings.mqtt_public_host}:{settings.mqtt_tls_port}",
+        mqtt_username=settings.mqtt_pilot_username,
+        mqtt_password=settings.mqtt_pilot_password,
+        ws_host=None,
+        stream_rtmp_url_template=f"rtmp://{settings.stream_public_host}:1935/live/{{gateway_sn}}",
+        docs_url="https://developer.dji.com/doc/cloud-api-tutorial/en/api-reference/pilot-to-cloud/jsbridge.html",
+        todo=(
+            "TODO(DJI Cloud API): implement WebSocket ws module before loading TSA; "
+            "validate MQTT auth and module parameters with DJI Pilot 2 hardware."
+        ),
     )
 
 
