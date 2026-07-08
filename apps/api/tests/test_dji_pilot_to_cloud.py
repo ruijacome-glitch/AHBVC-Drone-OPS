@@ -1,10 +1,12 @@
 from fastapi.testclient import TestClient
 
+from app.core.config import settings
 from app.main import app
 
 
 def test_obtain_device_topology_list_returns_empty_topology() -> None:
     client = TestClient(app)
+    settings.dji_pilot_api_token = "test-token"
 
     response = client.get(
         "/manage/api/v1/workspaces/test-workspace/devices/topologies",
@@ -21,8 +23,21 @@ def test_obtain_device_topology_list_returns_empty_topology() -> None:
     }
 
 
+def test_obtain_device_topology_list_rejects_invalid_auth_token() -> None:
+    client = TestClient(app)
+    settings.dji_pilot_api_token = "test-token"
+
+    response = client.get(
+        "/manage/api/v1/workspaces/test-workspace/devices/topologies",
+        headers={"x-auth-token": "wrong-token"},
+    )
+
+    assert response.status_code == 401
+
+
 def test_obtain_device_topology_list_requires_auth_token_header() -> None:
     client = TestClient(app)
+    settings.dji_pilot_api_token = "test-token"
 
     response = client.get("/manage/api/v1/workspaces/test-workspace/devices/topologies")
 

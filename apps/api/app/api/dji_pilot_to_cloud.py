@@ -1,7 +1,10 @@
+from secrets import compare_digest
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Header
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
+
+from app.core.config import settings
 
 router = APIRouter(tags=["dji-pilot-to-cloud"])
 
@@ -25,14 +28,25 @@ class DjiDeviceTopologyResponse(BaseModel):
     data: DjiDeviceTopologyData = Field(default_factory=DjiDeviceTopologyData)
 
 
+async def verify_dji_pilot_token(
+    x_auth_token: Annotated[str, Header(min_length=1, alias="x-auth-token")],
+) -> None:
+    expected_token = settings.dji_pilot_api_token
+    if not expected_token or not compare_digest(x_auth_token, expected_token):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Unauthorized",
+        )
+
+
 @router.get(
     "/manage/api/v1/workspaces/{workspace_id}/devices/topologies",
     response_model=DjiDeviceTopologyResponse,
     summary="Obtain Device Topology List",
+    dependencies=[Depends(verify_dji_pilot_token)],
 )
 async def obtain_device_topology_list(
     workspace_id: str,
-    x_auth_token: Annotated[str, Header(min_length=1, alias="x-auth-token")],
 ) -> DjiDeviceTopologyResponse:
     """DJI Pilot 2 first-connection topology endpoint.
 
@@ -41,5 +55,5 @@ async def obtain_device_topology_list(
     The MVP returns an empty topology until real Pilot 2 hardware registers
     controller/drone serials and confirmed device_model enum values.
     """
-    _ = (workspace_id, x_auth_token)
+    _ = workspace_id
     return DjiDeviceTopologyResponse()
