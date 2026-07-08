@@ -1,0 +1,18 @@
+logLevel: info
+api: yes
+apiAddress: :9997
+metrics: yes
+metricsAddress: :9998
+
+rtmp: yes
+rtmpAddress: :1935
+hls: yes
+hlsAddress: :8888
+webrtc: yes
+webrtcAddress: :8889
+
+paths:
+  all:
+    source: publisher
+    runOnReadyRestart: yes
+

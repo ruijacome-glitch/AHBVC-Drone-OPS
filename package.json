@@ -1,0 +1,19 @@
+{
+  "name": "uas-platform",
+  "private": true,
+  "version": "0.1.0",
+  "description": "UAS Platform monorepo for AHBVC DJI Enterprise drone operations.",
+  "workspaces": [
+    "apps/web",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:web": "npm --workspace apps/web run dev",
+    "build:web": "npm --workspace apps/web run build",
+    "lint:web": "npm --workspace apps/web run lint"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
+
