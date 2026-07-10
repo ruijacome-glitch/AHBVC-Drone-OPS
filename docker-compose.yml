@@ -86,6 +86,8 @@ services:
       - emqx-log:/opt/emqx/log
       - ./infrastructure/emqx/acl.conf:/opt/emqx/etc/acl.conf:ro
       - ./infrastructure/emqx:/opt/emqx/etc/uas:ro
+    ports:
+      - "1883:1883"
     labels:
       - traefik.enable=true
       - traefik.http.routers.emqx.rule=Host(`mqtt.${ROOT_DOMAIN}`)

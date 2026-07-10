@@ -21,7 +21,10 @@ https://developer.dji.com/doc/cloud-api-tutorial/en/
    - `https://api.uas.ahbvc.org.pt`
 5. Confirm the exact login/authentication callback contract required by DJI Pilot 2.
 6. Confirm the exact MQTT authentication mechanism expected by Pilot 2.
-7. Confirm TLS/certificate requirements for MQTT on `mqtt.uas.ahbvc.org.pt:8883`.
+7. Confirm whether the DJI Pilot 2 Cloud Module must use `tcp://` or `ws://`.
+   The official JSBridge Cloud Module reference states that the MQTT URL in
+   Pilot 2 needs to use `tcp://` or `ws://`, with an example like
+   `tcp://xx.xx.xx.xx:xxx`.
 8. Confirm whether DJI expects any allowlisted callback URLs for media, livestream, or device events.
 
 ### Server DNS and TLS
@@ -40,6 +43,13 @@ Then set:
 ```env
 ROOT_DOMAIN=uas.ahbvc.org.pt
 LETSENCRYPT_EMAIL=<AHBVC technical email>
+```
+
+For the DJI Pilot 2 Cloud Module MQTT `tcp://` test, allow TCP port 1883 on
+the VPS firewall:
+
+```bash
+ufw allow 1883/tcp
 ```
 
 ### DJI Pilot 2
@@ -62,7 +72,7 @@ https://api.uas.ahbvc.org.pt/api/v1/dji/pilot/bootstrap
 4. Configure MQTT using the official DJI Cloud API instructions after validating credentials:
 
 ```text
-mqtt.uas.ahbvc.org.pt:8883
+tcp://mqtt.uas.ahbvc.org.pt:1883
 ```
 
 5. Test with one controller/gateway first.
@@ -92,6 +102,7 @@ DJI_WORKSPACE_ID=<uuid>
 DJI_PILOT_API_TOKEN=<long-random-token>
 MQTT_PILOT_USERNAME=pilot
 MQTT_PILOT_PASSWORD=<long-random-password>
+MQTT_PUBLIC_URL=tcp://mqtt.uas.ahbvc.org.pt:1883
 ```
 
 Do not commit the real App Key, App Secret, or Basic License.
@@ -126,8 +137,7 @@ MQTT_PILOT_USERNAME="$(grep -E '^MQTT_PILOT_USERNAME=' .env | tail -n 1 | cut -d
 MQTT_PILOT_PASSWORD="$(grep -E '^MQTT_PILOT_PASSWORD=' .env | tail -n 1 | cut -d= -f2-)"
 docker run --rm eclipse-mosquitto:2 mosquitto_sub \
   -h mqtt.uas.ahbvc.org.pt \
-  -p 8883 \
-  --capath /etc/ssl/certs \
+  -p 1883 \
   -u "${MQTT_PILOT_USERNAME}" \
   -P "${MQTT_PILOT_PASSWORD}" \
   -t "thing/product/test/osd" \
@@ -142,8 +152,7 @@ MQTT_PILOT_USERNAME="$(grep -E '^MQTT_PILOT_USERNAME=' .env | tail -n 1 | cut -d
 MQTT_PILOT_PASSWORD="$(grep -E '^MQTT_PILOT_PASSWORD=' .env | tail -n 1 | cut -d= -f2-)"
 docker run --rm eclipse-mosquitto:2 mosquitto_pub \
   -h mqtt.uas.ahbvc.org.pt \
-  -p 8883 \
-  --capath /etc/ssl/certs \
+  -p 1883 \
   -u "${MQTT_PILOT_USERNAME}" \
   -P "${MQTT_PILOT_PASSWORD}" \
   -t "thing/product/test/osd" \
@@ -193,7 +202,7 @@ docker compose exec emqx /opt/emqx/bin/emqx ctl clients list
 - Pilot 2 opens `pilot.uas.ahbvc.org.pt`.
 - The API healthcheck is green.
 - DJI Developer Portal credentials are in `.env`.
-- MQTT TLS connection succeeds from Pilot 2.
+- MQTT `tcp://` connection succeeds from Pilot 2.
 - The DJI `ws` and `tsa` modules load without an immediate JSBridge error.
 - At least one gateway/controller serial is known.
 - The first MQTT packet is visible in EMQX logs or dashboard.
