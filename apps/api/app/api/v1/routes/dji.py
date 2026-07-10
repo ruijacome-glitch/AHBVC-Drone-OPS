@@ -106,7 +106,7 @@ async def pilot_jsbridge_config() -> PilotJsBridgeConfigResponse:
         platform_description="AHBVC DJI Enterprise operations platform.",
         api_host=f"https://api.{settings.root_domain}",
         api_token=settings.dji_pilot_api_token,
-        mqtt_url=f"tcp://{settings.mqtt_public_host}:{settings.mqtt_tls_port}",
+        mqtt_url=f"{settings.mqtt_public_scheme}://{settings.mqtt_public_host}:{settings.mqtt_tls_port}",
         mqtt_username=settings.mqtt_pilot_username,
         mqtt_password=settings.mqtt_pilot_password,
         ws_host=(

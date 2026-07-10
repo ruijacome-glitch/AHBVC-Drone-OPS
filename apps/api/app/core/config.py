@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     dji_cloud_api_docs_url: AnyUrl = "https://developer.dji.com/doc/cloud-api-tutorial/en/"
 
     mqtt_public_host: str = "mqtt.uas.ahbvc.org.pt"
+    mqtt_public_scheme: str = "ssl"
     mqtt_tls_port: int = 8883
     mqtt_internal_host: str = "emqx"
     mqtt_internal_port: int = 1883
