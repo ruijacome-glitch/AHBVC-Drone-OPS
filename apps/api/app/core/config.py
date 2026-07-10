@@ -28,6 +28,7 @@ class Settings(BaseSettings):
 
     mqtt_public_host: str = "mqtt.uas.ahbvc.org.pt"
     mqtt_public_scheme: str = "ssl"
+    mqtt_public_url: str | None = None
     mqtt_tls_port: int = 8883
     mqtt_internal_host: str = "emqx"
     mqtt_internal_port: int = 1883
@@ -44,6 +45,14 @@ class Settings(BaseSettings):
     @cached_property
     def cors_origins(self) -> list[str]:
         return [origin.strip() for origin in self.api_cors_origins.split(",") if origin.strip()]
+
+    @property
+    def pilot_mqtt_url(self) -> str:
+        if self.mqtt_public_url:
+            return self.mqtt_public_url
+        if not self.mqtt_public_scheme:
+            return f"{self.mqtt_public_host}:{self.mqtt_tls_port}"
+        return f"{self.mqtt_public_scheme}://{self.mqtt_public_host}:{self.mqtt_tls_port}"
 
 
 settings = Settings()

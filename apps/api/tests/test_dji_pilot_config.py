@@ -26,6 +26,7 @@ def test_pilot_jsbridge_config_includes_situation_awareness_websocket() -> None:
         "dji_pilot_api_token": settings.dji_pilot_api_token,
         "mqtt_pilot_username": settings.mqtt_pilot_username,
         "mqtt_pilot_password": settings.mqtt_pilot_password,
+        "mqtt_public_url": settings.mqtt_public_url,
     }
 
     settings.dji_app_id = "app-id"
@@ -35,6 +36,7 @@ def test_pilot_jsbridge_config_includes_situation_awareness_websocket() -> None:
     settings.dji_pilot_api_token = "test-token"
     settings.mqtt_pilot_username = "pilot"
     settings.mqtt_pilot_password = "mqtt-password"
+    settings.mqtt_public_url = "mqtt.uas.ahbvc.org.pt:8883"
 
     try:
         response = client.get("/api/v1/dji/pilot/jsbridge-config")
@@ -42,6 +44,7 @@ def test_pilot_jsbridge_config_includes_situation_awareness_websocket() -> None:
         assert response.status_code == 200
         payload = response.json()
         assert payload["setup_ready"] is True
+        assert payload["mqtt_url"] == "mqtt.uas.ahbvc.org.pt:8883"
         assert payload["ws_host"].startswith(
             "wss://api.uas.ahbvc.org.pt/manage/api/v1/workspaces/"
         )
