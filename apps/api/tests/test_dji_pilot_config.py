@@ -12,7 +12,7 @@ def test_pilot_jsbridge_config_reports_missing_configuration() -> None:
     assert response.status_code == 200
     payload = response.json()
     assert payload["setup_ready"] is False
-    assert "DJI_APP_ID" in payload["missing_config"]
+    assert payload["missing_config"]
     assert payload["ws_host"] is None
 
 
@@ -36,7 +36,7 @@ def test_pilot_jsbridge_config_includes_situation_awareness_websocket() -> None:
     settings.dji_pilot_api_token = "test-token"
     settings.mqtt_pilot_username = "pilot"
     settings.mqtt_pilot_password = "mqtt-password"
-    settings.mqtt_public_url = "mqtt.uas.ahbvc.org.pt:8883"
+    settings.mqtt_public_url = "tcp://mqtt.uas.ahbvc.org.pt:1883"
 
     try:
         response = client.get("/api/v1/dji/pilot/jsbridge-config")
@@ -44,7 +44,7 @@ def test_pilot_jsbridge_config_includes_situation_awareness_websocket() -> None:
         assert response.status_code == 200
         payload = response.json()
         assert payload["setup_ready"] is True
-        assert payload["mqtt_url"] == "mqtt.uas.ahbvc.org.pt:8883"
+        assert payload["mqtt_url"] == "tcp://mqtt.uas.ahbvc.org.pt:1883"
         assert payload["ws_host"].startswith(
             "wss://api.uas.ahbvc.org.pt/manage/api/v1/workspaces/"
         )

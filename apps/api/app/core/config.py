@@ -27,9 +27,10 @@ class Settings(BaseSettings):
     dji_cloud_api_docs_url: AnyUrl = "https://developer.dji.com/doc/cloud-api-tutorial/en/"
 
     mqtt_public_host: str = "mqtt.uas.ahbvc.org.pt"
-    mqtt_public_scheme: str = "ssl"
+    # DJI Pilot 2 JSBridge Cloud Module accepts tcp:// or ws:// endpoints.
+    mqtt_public_scheme: str = "tcp"
     mqtt_public_url: str | None = None
-    mqtt_tls_port: int = 8883
+    mqtt_tls_port: int = 1883
     mqtt_internal_host: str = "emqx"
     mqtt_internal_port: int = 1883
     mqtt_pilot_username: str | None = None
