@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     dji_workspace_id: str | None = None
     dji_workspace_name: str = "AHBVC UAS Platform"
     dji_pilot_api_token: str | None = None
+    dji_gateway_sn: str | None = None
+    dji_gateway_model_domain: str = "2"
+    dji_gateway_model_type: str = "119"
+    dji_gateway_model_sub_type: str = "0"
+    dji_gateway_callsign: str = "DJI RC Plus"
     dji_cloud_api_docs_url: AnyUrl = "https://developer.dji.com/doc/cloud-api-tutorial/en/"
 
     mqtt_public_host: str = "mqtt.uas.ahbvc.org.pt"
