@@ -89,6 +89,16 @@ function parseConnectState(value: unknown): boolean | undefined {
   return undefined;
 }
 
+function parseBridgeData<T>(value: string | undefined): T | undefined {
+  if (!value) return undefined;
+  try {
+    const response = JSON.parse(value) as { code?: number; data?: T };
+    return response.code === 0 ? response.data : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 async function getBackendMqttStatus(): Promise<MqttStatus | null> {
   try {
     const response = await fetch(`${apiBaseUrl}/api/v1/dji/mqtt/status`, { cache: "no-store" });
@@ -408,6 +418,7 @@ function PilotPage() {
       });
       if (thingResult.code !== 0) throw new Error(thingResult.message ?? "Falha no modulo MQTT");
       let connectState: boolean | undefined;
+      let mqttConfirmed = false;
       const deadline = Date.now() + 5000;
       while (Date.now() < deadline) {
         const rawConnectState = window.djiBridge?.thingGetConnectState?.();
@@ -416,6 +427,7 @@ function PilotPage() {
         await new Promise((resolve) => window.setTimeout(resolve, 500));
       }
       if (connectState === true) {
+        mqttConfirmed = true;
         setMqttState("connected");
         setStep("thing", "ok", "MQTT ligado (thingGetConnectState=true).");
       } else if (connectState === false) {
@@ -430,12 +442,19 @@ function PilotPage() {
             (device) => device.message_count > 0,
           );
           if (backendStatus?.connected && receivedDeviceMessages) {
+            mqttConfirmed = true;
             setMqttState("connected");
             setStep("thing", "ok", "MQTT confirmado pelo backend e por mensagens DJI recebidas.");
             break;
           }
           await new Promise((resolve) => window.setTimeout(resolve, 1000));
         }
+      }
+
+      if (!mqttConfirmed) {
+        setStep("tsa", "skipped", "Bloqueado: MQTT ainda não está ligado.");
+        setError("O módulo MQTT não confirmou ligação. WS/TSA não serão iniciados.");
+        return;
       }
 
       if (!config.ws_host) {
@@ -467,8 +486,8 @@ function PilotPage() {
         if (tsaResult.code !== 0) throw new Error(tsaResult.message ?? "Falha no modulo TSA");
         setStep("tsa", "ok", "WebSocket/TSA carregado; a aguardar dados reais do drone.");
       }
-      setControllerSn(window.djiBridge?.platformGetRemoteControllerSN?.() ?? "--");
-      setAircraftSn(window.djiBridge?.platformGetAircraftSN?.() ?? "--");
+      setControllerSn(parseBridgeData<string>(window.djiBridge?.platformGetRemoteControllerSN?.()) ?? "--");
+      setAircraftSn(parseBridgeData<string>(window.djiBridge?.platformGetAircraftSN?.()) ?? "--");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro desconhecido na configuracao Pilot.");
     } finally {
