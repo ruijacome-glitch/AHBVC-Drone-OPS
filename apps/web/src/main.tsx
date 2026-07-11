@@ -235,7 +235,10 @@ function OpsDashboard() {
     };
   }, []);
 
-  const online = Boolean(telemetry && mqttStatus?.connected);
+  const telemetryFresh = telemetry
+    ? Date.now() - new Date(telemetry.observed_at).getTime() < 15000
+    : false;
+  const online = telemetryFresh && (mqttStatus?.connected ?? true);
   const metrics = [
     { label: "Drones simultaneos", value: telemetry ? "1 / 2" : "0 / 2", icon: Radio },
     { label: "Gateway DJI", value: online ? "Online" : "Offline", icon: Wifi },
