@@ -195,9 +195,15 @@ class DjiMqttConsumer:
 
     def _persist_osd_message(self, device_sn: str, payload: dict[str, Any], topic: str) -> None:
         gateway_sn = payload.get("gateway")
+        with self._lock:
+            device_state = self._state.devices.get(device_sn)
+            known_gateway_sn = device_state.gateway_sn if device_state else None
+        # The RC Plus publishes its own OSD too; flight telemetry belongs to
+        # a child aircraft registered through update_topo.
+        if not known_gateway_sn:
+            return
         if not isinstance(gateway_sn, str):
-            with self._lock:
-                gateway_sn = self._state.devices.get(device_sn, DeviceMqttState(device_sn)).gateway_sn
+            gateway_sn = known_gateway_sn
         if not gateway_sn:
             logger.warning("Ignoring DJI OSD without gateway SN: %s", topic)
             return
