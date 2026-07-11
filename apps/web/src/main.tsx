@@ -103,6 +103,7 @@ declare global {
   interface Window {
     djiBridge?: DjiBridge;
     uasPilotBridgeThingCallback?: (payload: string | boolean) => void;
+    connectCallback?: (payload: string | boolean) => void;
   }
 }
 
@@ -272,7 +273,7 @@ function PilotPage() {
   const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    window.uasPilotBridgeThingCallback = (payload: string | boolean) => {
+    const connectCallback = (payload: string | boolean) => {
       const connected = parseConnectState(payload);
       if (connected === undefined) return;
       setMqttState(connected ? "connected" : "disconnected");
@@ -282,6 +283,8 @@ function PilotPage() {
         `Callback MQTT: ${String(payload)}`,
       );
     };
+    window.connectCallback = connectCallback;
+    window.uasPilotBridgeThingCallback = connectCallback;
 
     fetch(`${apiBaseUrl}/api/v1/dji/pilot/jsbridge-config`)
       .then((response) => {
@@ -397,29 +400,13 @@ function PilotPage() {
           "thing",
           JSON.stringify({
             host: config.mqtt_url,
-            connectCallback: "uasPilotBridgeThingCallback",
+            connectCallback: "connectCallback",
             username: config.mqtt_username,
             password: config.mqtt_password,
           }),
         );
       });
       if (thingResult.code !== 0) throw new Error(thingResult.message ?? "Falha no modulo MQTT");
-      bridgeCall("Thing callback", (bridge) => {
-        if (!bridge.thingSetConnectCallback) {
-          throw new Error("Metodo JSBridge indisponivel: thingSetConnectCallback");
-        }
-        return bridge.thingSetConnectCallback("uasPilotBridgeThingCallback");
-      });
-      bridgeCall("Thing connect", (bridge) => {
-        if (!bridge.thingConnect) {
-          throw new Error("Metodo JSBridge indisponivel: thingConnect");
-        }
-        return bridge.thingConnect(
-          config.mqtt_username ?? "",
-          config.mqtt_password ?? "",
-          "uasPilotBridgeThingCallback",
-        );
-      });
       let connectState: boolean | undefined;
       const deadline = Date.now() + 5000;
       while (Date.now() < deadline) {
