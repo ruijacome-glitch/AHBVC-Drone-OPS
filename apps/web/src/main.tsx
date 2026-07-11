@@ -501,11 +501,7 @@ function TelemetryMap({ history, track }: { history: Telemetry[]; track: FlightT
         sources: {
           osm: {
             type: "raster",
-            tiles: [
-              "https://a.tile.openstreetmap.org/{z}/{x}/{y}.png",
-              "https://b.tile.openstreetmap.org/{z}/{x}/{y}.png",
-              "https://c.tile.openstreetmap.org/{z}/{x}/{y}.png",
-            ],
+            tiles: [`${apiBaseUrl}/api/v1/map/tiles/{z}/{x}/{y}.png`],
             tileSize: 256,
             attribution: "© OpenStreetMap contributors",
           },
