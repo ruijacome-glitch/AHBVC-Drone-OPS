@@ -49,7 +49,7 @@ type BridgeResult = {
 
 type MqttStatus = {
   connected: boolean;
-  devices: Record<string, { message_count: number }>;
+  devices: Record<string, { message_count: number; last_message_at?: string | null }>;
 };
 
 type Telemetry = {
@@ -239,9 +239,15 @@ function OpsDashboard() {
     ? Date.now() - new Date(telemetry.observed_at).getTime() < 15000
     : false;
   const online = telemetryFresh && (mqttStatus?.connected ?? true);
+  const gatewayLastMessage = mqttStatus?.devices["4LFCM3M006Q6DR"]?.last_message_at;
+  const gatewayOnline = Boolean(
+    mqttStatus?.connected &&
+      gatewayLastMessage &&
+      Date.now() - new Date(gatewayLastMessage).getTime() < 15000,
+  );
   const metrics = [
     { label: "Drones simultaneos", value: telemetry ? "1 / 2" : "0 / 2", icon: Radio },
-    { label: "Gateway DJI", value: online ? "Online" : "Offline", icon: Wifi },
+    { label: "Gateway DJI", value: gatewayOnline ? "Online" : "Offline", icon: Wifi },
     {
       label: "Bateria M30T",
       value: telemetry?.battery_percent == null ? "--" : `${Math.round(telemetry.battery_percent)}%`,
