@@ -378,6 +378,7 @@ function TelemetryMap({ history }: { history: Telemetry[] }) {
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const mapRef = React.useRef<maplibregl.Map | null>(null);
   const markerRef = React.useRef<maplibregl.Marker | null>(null);
+  const routeLayerRef = React.useRef(false);
   const validHistory = history.filter(
     (point) => point.latitude !== null && point.longitude !== null && (point.latitude !== 0 || point.longitude !== 0),
   );
@@ -408,6 +409,7 @@ function TelemetryMap({ history }: { history: Telemetry[] }) {
       markerRef.current?.remove();
       map.remove();
       mapRef.current = null;
+      routeLayerRef.current = false;
     };
   }, []);
 
@@ -424,6 +426,42 @@ function TelemetryMap({ history }: { history: Telemetry[] }) {
       markerRef.current.setLngLat([latest.longitude, latest.latitude]);
     }
     map.easeTo({ center: [latest.longitude, latest.latitude], duration: 500 });
+  }, [validHistory]);
+
+  React.useEffect(() => {
+    const map = mapRef.current;
+    if (!map || validHistory.length < 2) return;
+    const coordinates = validHistory
+      .slice()
+      .reverse()
+      .flatMap((point) =>
+        point.latitude !== null && point.longitude !== null
+          ? [[point.longitude, point.latitude] as [number, number]]
+          : [],
+      );
+    const updateRoute = () => {
+      if (!routeLayerRef.current) {
+        map.addSource("flight-route", {
+          type: "geojson",
+          data: { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates } },
+        });
+        map.addLayer({
+          id: "flight-route-line",
+          type: "line",
+          source: "flight-route",
+          paint: { "line-color": "#dc2626", "line-width": 4, "line-opacity": 0.85 },
+        });
+        routeLayerRef.current = true;
+      } else {
+        const source = map.getSource("flight-route") as maplibregl.GeoJSONSource;
+        source.setData({ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates } });
+      }
+    };
+    if (map.isStyleLoaded()) updateRoute();
+    else map.once("load", updateRoute);
+    return () => {
+      map.off("load", updateRoute);
+    };
   }, [validHistory]);
 
   return (

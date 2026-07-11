@@ -270,6 +270,52 @@ class DjiMqttConsumer:
                 {**telemetry.__dict__, "longitude": telemetry.longitude, "latitude": telemetry.latitude,
                  "source_topic": topic, "payload": json.dumps(payload)},
             )
+            if telemetry.latitude is not None and telemetry.longitude is not None and (
+                telemetry.latitude != 0 or telemetry.longitude != 0
+            ):
+                active_track = await session.execute(
+                    text(
+                        """
+                        SELECT ft.id FROM flight_tracks ft
+                        JOIN drones d ON d.id = ft.drone_id
+                        WHERE d.serial_number = :drone_serial AND ft.ended_at IS NULL
+                        ORDER BY ft.started_at DESC LIMIT 1
+                        """
+                    ),
+                    {"drone_serial": telemetry.drone_serial},
+                )
+                track_id = active_track.scalar_one_or_none()
+                if track_id is None:
+                    await session.execute(
+                        text(
+                            """
+                            INSERT INTO flight_tracks (drone_id, track, started_at)
+                            SELECT id, ST_MakeLine(
+                              ST_Force3D(ST_SetSRID(ST_MakePoint(:longitude, :latitude, :altitude_m), 4326)),
+                              ST_Force3D(ST_SetSRID(ST_MakePoint(:longitude, :latitude, :altitude_m), 4326))
+                            ), :observed_at
+                            FROM drones WHERE serial_number = :drone_serial
+                            """
+                        ),
+                        {"drone_serial": telemetry.drone_serial, "longitude": telemetry.longitude,
+                         "latitude": telemetry.latitude, "altitude_m": telemetry.altitude_m or 0,
+                         "observed_at": telemetry.observed_at},
+                    )
+                else:
+                    await session.execute(
+                        text(
+                            """
+                            UPDATE flight_tracks SET
+                              track = ST_AddPoint(track, ST_Force3D(
+                                ST_SetSRID(ST_MakePoint(:longitude, :latitude, :altitude_m), 4326)
+                              ))
+                            WHERE id = :track_id
+                            """
+                        ),
+                        {"track_id": track_id, "longitude": telemetry.longitude,
+                         "latitude": telemetry.latitude, "altitude_m": telemetry.altitude_m or 0,
+                         "observed_at": telemetry.observed_at},
+                    )
             await session.commit()
 
     def _apply_topology_update(

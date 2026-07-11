@@ -76,3 +76,28 @@ async def telemetry_history(
             {"drone_sn": drone_sn, "limit": limit},
         )
         return [_json_telemetry(row) for row in result.mappings().all()]
+
+
+@router.get("/telemetry/{drone_sn}/track")
+async def latest_flight_track(
+    drone_sn: str = Path(pattern=r"^[A-Za-z0-9_-]{1,64}$"),
+) -> dict[str, object]:
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            text(
+                """
+                SELECT ST_AsGeoJSON(ft.track)::json AS geometry,
+                       ft.started_at, ft.ended_at
+                FROM flight_tracks ft
+                JOIN drones d ON d.id = ft.drone_id
+                WHERE d.serial_number = :drone_sn
+                ORDER BY ft.started_at DESC
+                LIMIT 1
+                """
+            ),
+            {"drone_sn": drone_sn},
+        )
+        row = result.mappings().first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="No flight track available for this drone")
+    return _json_telemetry(row)
