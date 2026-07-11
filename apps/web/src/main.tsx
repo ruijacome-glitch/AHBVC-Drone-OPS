@@ -55,6 +55,8 @@ type DjiBridge = {
   ) => string | void;
   platformLoadComponent?: (name: string, param: string) => string | void;
   thingConnect?: (username: string, password: string, callback: string) => string | void;
+  thingGetConnectState?: () => boolean;
+  thingGetConfigs?: () => string;
   apiSetToken?: (token: string) => string | void;
   platformGetRemoteControllerSN?: () => string;
   platformGetAircraftSN?: () => string;
@@ -226,12 +228,21 @@ function PilotPage() {
   const [steps, setSteps] = React.useState<SetupStep[]>(setupSteps);
   const [controllerSn, setControllerSn] = React.useState<string>("--");
   const [aircraftSn, setAircraftSn] = React.useState<string>("--");
+  const [mqttState, setMqttState] = React.useState<"unknown" | "connected" | "disconnected">(
+    "unknown",
+  );
   const [isConfiguring, setIsConfiguring] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     window.uasPilotBridgeThingCallback = (payload: string) => {
-      setStep("thing", "ok", `Callback MQTT: ${payload}`);
+      const connected = payload === "true" || payload === "1";
+      setMqttState(connected ? "connected" : "disconnected");
+      setStep(
+        "thing",
+        connected ? "ok" : "running",
+        `Callback MQTT: ${payload}`,
+      );
     };
 
     fetch(`${apiBaseUrl}/api/v1/dji/pilot/jsbridge-config`)
@@ -365,7 +376,17 @@ function PilotPage() {
           "uasPilotBridgeThingCallback",
         );
       });
-      setStep("thing", "ok", config.mqtt_url);
+      await new Promise((resolve) => window.setTimeout(resolve, 1200));
+      const connectState = window.djiBridge?.thingGetConnectState?.();
+      if (connectState === true) {
+        setMqttState("connected");
+        setStep("thing", "ok", "MQTT ligado (thingGetConnectState=true).");
+      } else if (connectState === false) {
+        setMqttState("disconnected");
+        setStep("thing", "error", "MQTT desligado (thingGetConnectState=false).");
+      } else {
+        setStep("thing", "running", `A aguardar estado MQTT em ${config.mqtt_url}.`);
+      }
 
       if (!config.ws_host) {
         setStep("tsa", "skipped", "Pendente: falta configurar ws_host.");
@@ -418,6 +439,16 @@ function PilotPage() {
 
         <div className="pilot-status-grid" aria-live="polite">
           <StatusTile label="JSBridge" value={window.djiBridge ? "Disponivel" : "Fora do Pilot"} />
+          <StatusTile
+            label="MQTT"
+            value={
+              mqttState === "connected"
+                ? "Ligado"
+                : mqttState === "disconnected"
+                  ? "Desligado"
+                  : "A verificar"
+            }
+          />
           <StatusTile label="Comando" value={controllerSn} />
           <StatusTile label="Drone" value={aircraftSn} />
         </div>
