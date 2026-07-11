@@ -22,4 +22,12 @@ async def osm_tile(
         )
     if upstream.status_code != 200:
         raise HTTPException(status_code=upstream.status_code, detail="Map tile unavailable")
-    return Response(content=upstream.content, media_type="image/png", headers={"Cache-Control": "public, max-age=86400"})
+    return Response(
+        content=upstream.content,
+        media_type="image/png",
+        headers={
+            "Access-Control-Allow-Origin": "https://uas.ahbvc.org.pt",
+            "Cache-Control": "public, max-age=86400",
+            "Vary": "Origin",
+        },
+    )
