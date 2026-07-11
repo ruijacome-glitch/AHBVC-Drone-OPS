@@ -280,6 +280,7 @@ function PilotPage() {
   const [mqttState, setMqttState] = React.useState<"unknown" | "connected" | "disconnected">(
     "unknown",
   );
+  const backendMqttConfirmed = React.useRef(false);
   const [isConfiguring, setIsConfiguring] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -287,6 +288,7 @@ function PilotPage() {
     const connectCallback = (payload: string | boolean) => {
       const connected = parseConnectState(payload);
       if (connected === undefined) return;
+      if (!connected && backendMqttConfirmed.current) return;
       setMqttState(connected ? "connected" : "disconnected");
       setStep(
         "thing",
@@ -333,6 +335,7 @@ function PilotPage() {
     setError(null);
     setIsConfiguring(true);
     setSteps(setupSteps);
+    backendMqttConfirmed.current = false;
 
     if (!config.setup_ready) {
       setError(`Configuracao incompleta no servidor: ${config.missing_config.join(", ")}`);
@@ -467,6 +470,7 @@ function PilotPage() {
           );
           if (backendStatus?.connected && receivedDeviceMessages) {
             mqttConfirmed = true;
+            backendMqttConfirmed.current = true;
             setMqttState("connected");
             setStep("thing", "ok", "MQTT confirmado pelo backend e por mensagens DJI recebidas.");
             break;
