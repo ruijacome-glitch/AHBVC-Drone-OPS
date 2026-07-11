@@ -13,8 +13,10 @@ import {
   XCircle,
 } from "lucide-react";
 import { motion, useReducedMotion } from "framer-motion";
+import maplibregl from "maplibre-gl";
 
 import "./styles.css";
+import "maplibre-gl/dist/maplibre-gl.css";
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 
@@ -48,6 +50,23 @@ type BridgeResult = {
 type MqttStatus = {
   connected: boolean;
   devices: Record<string, { message_count: number }>;
+};
+
+type Telemetry = {
+  drone_serial: string;
+  gateway_serial: string;
+  model: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  altitude_m: number | null;
+  speed_mps: number | null;
+  heading_deg: number | null;
+  battery_percent: number | null;
+  gps_status: string | null;
+  rtk_status: string | null;
+  active_payload: string | null;
+  flight_mode: string | null;
+  observed_at: string;
 };
 
 type DjiBridge = {
@@ -184,6 +203,53 @@ function App() {
 
 function OpsDashboard() {
   const reduceMotion = useReducedMotion();
+  const [telemetry, setTelemetry] = React.useState<Telemetry | null>(null);
+  const [history, setHistory] = React.useState<Telemetry[]>([]);
+  const [mqttStatus, setMqttStatus] = React.useState<MqttStatus | null>(null);
+  const droneSn = "1581F5BKP256200BF008";
+
+  React.useEffect(() => {
+    let active = true;
+    const refresh = async () => {
+      try {
+        const [latestResponse, historyResponse, mqttResponse] = await Promise.all([
+          fetch(`${apiBaseUrl}/api/v1/dji/mqtt/telemetry/${droneSn}/latest`, { cache: "no-store" }),
+          fetch(`${apiBaseUrl}/api/v1/dji/mqtt/telemetry/${droneSn}/history?limit=200`, {
+            cache: "no-store",
+          }),
+          fetch(`${apiBaseUrl}/api/v1/dji/mqtt/status`, { cache: "no-store" }),
+        ]);
+        if (!active) return;
+        setTelemetry(latestResponse.ok ? ((await latestResponse.json()) as Telemetry) : null);
+        setHistory(historyResponse.ok ? ((await historyResponse.json()) as Telemetry[]) : []);
+        setMqttStatus(mqttResponse.ok ? ((await mqttResponse.json()) as MqttStatus) : null);
+      } catch {
+        if (active) setMqttStatus(null);
+      }
+    };
+    void refresh();
+    const timer = window.setInterval(refresh, 3000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  const online = Boolean(telemetry && mqttStatus?.connected);
+  const metrics = [
+    { label: "Drones simultaneos", value: telemetry ? "1 / 2" : "0 / 2", icon: Radio },
+    { label: "Gateway DJI", value: online ? "Online" : "Offline", icon: Wifi },
+    {
+      label: "Bateria M30T",
+      value: telemetry?.battery_percent == null ? "--" : `${Math.round(telemetry.battery_percent)}%`,
+      icon: Battery,
+    },
+    {
+      label: "Altitude",
+      value: telemetry?.altitude_m == null ? "--" : `${telemetry.altitude_m.toFixed(1)} m`,
+      icon: Activity,
+    },
+  ];
 
   return (
     <main className="app-shell">
@@ -214,7 +280,9 @@ function OpsDashboard() {
             <p className="eyebrow">Bombeiros Voluntarios de Cascais</p>
             <h1>Consola inicial de operacoes UAS</h1>
           </div>
-          <span className="status-pill offline">Sem telemetria</span>
+          <span className={`status-pill ${online ? "online" : "offline"}`}>
+            {online ? "Telemetria online" : "Sem telemetria"}
+          </span>
         </header>
 
         <motion.section
@@ -234,14 +302,14 @@ function OpsDashboard() {
 
         <section className="ops-grid">
           <article className="map-panel" aria-label="Mapa operacional">
-            <div className="map-grid">
-              <div className="map-crosshair">
-                <MapPin aria-hidden="true" size={28} />
-              </div>
-            </div>
+            <TelemetryMap history={history} />
             <div className="map-footer">
               <strong>Mapa em tempo real</strong>
-              <span>MapLibre sera ativado na Fase 4 apos receber telemetria MQTT.</span>
+              <span>
+                {telemetry?.latitude && telemetry.longitude
+                  ? `M30T ${telemetry.latitude.toFixed(5)}, ${telemetry.longitude.toFixed(5)}`
+                  : "Sem posição GPS válida; o drone está a enviar 0,0 neste teste."}
+              </span>
             </div>
           </article>
 
@@ -253,7 +321,7 @@ function OpsDashboard() {
             <dl className="definition-list">
               <div>
                 <dt>DJI Matrice 30T</dt>
-                <dd>A aguardar registo via Pilot 2</dd>
+                <dd>{online ? "Online / telemetria recebida" : "A aguardar telemetria"}</dd>
               </div>
               <div>
                 <dt>DJI Matrice 4T</dt>
@@ -261,13 +329,90 @@ function OpsDashboard() {
               </div>
               <div>
                 <dt>MQTT</dt>
-                <dd>EMQX preparado para topicos DJI Cloud API</dd>
+                <dd>{mqttStatus?.connected ? "Ligado ao EMQX" : "A aguardar ligação"}</dd>
+              </div>
+              <div>
+                <dt>Heading / velocidade</dt>
+                <dd>
+                  {telemetry?.heading_deg == null ? "--" : `${telemetry.heading_deg.toFixed(1)}°`}
+                  {telemetry?.speed_mps == null ? " / --" : ` / ${telemetry.speed_mps.toFixed(1)} m/s`}
+                </dd>
+              </div>
+              <div>
+                <dt>Payload térmico</dt>
+                <dd>{telemetry?.active_payload ?? "--"}</dd>
               </div>
             </dl>
           </article>
         </section>
       </section>
     </main>
+  );
+}
+
+function TelemetryMap({ history }: { history: Telemetry[] }) {
+  const containerRef = React.useRef<HTMLDivElement | null>(null);
+  const mapRef = React.useRef<maplibregl.Map | null>(null);
+  const markerRef = React.useRef<maplibregl.Marker | null>(null);
+  const validHistory = history.filter(
+    (point) => point.latitude !== null && point.longitude !== null && (point.latitude !== 0 || point.longitude !== 0),
+  );
+
+  React.useEffect(() => {
+    if (!containerRef.current || mapRef.current) return;
+    const map = new maplibregl.Map({
+      container: containerRef.current,
+      style: {
+        version: 8,
+        sources: {
+          osm: {
+            type: "raster",
+            tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
+            tileSize: 256,
+            attribution: "© OpenStreetMap contributors",
+          },
+        },
+        layers: [{ id: "osm", type: "raster", source: "osm" }],
+      },
+      center: [-9.42, 38.7],
+      zoom: 11,
+      attributionControl: { compact: true },
+    });
+    map.addControl(new maplibregl.NavigationControl(), "top-right");
+    mapRef.current = map;
+    return () => {
+      markerRef.current?.remove();
+      map.remove();
+      mapRef.current = null;
+    };
+  }, []);
+
+  React.useEffect(() => {
+    const map = mapRef.current;
+    if (!map || validHistory.length === 0) return;
+    const latest = validHistory[0];
+    if (latest.latitude === null || latest.longitude === null) return;
+    if (!markerRef.current) {
+      const element = document.createElement("div");
+      element.className = "drone-marker";
+      markerRef.current = new maplibregl.Marker({ element }).setLngLat([latest.longitude, latest.latitude]).addTo(map);
+    } else {
+      markerRef.current.setLngLat([latest.longitude, latest.latitude]);
+    }
+    map.easeTo({ center: [latest.longitude, latest.latitude], duration: 500 });
+  }, [validHistory]);
+
+  return (
+    <div className="map-grid maplibre-container">
+      <div ref={containerRef} className="map-canvas" />
+      {validHistory.length === 0 ? (
+        <div className="map-empty">
+          <MapPin aria-hidden="true" size={28} />
+          <strong>Posição GPS indisponível</strong>
+          <span>A telemetria está a chegar; falta uma coordenada válida.</span>
+        </div>
+      ) : null}
+    </div>
   );
 }
 

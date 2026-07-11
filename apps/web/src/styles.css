@@ -142,6 +142,12 @@ h1 {
   color: #be123c;
 }
 
+.online {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+  color: #166534;
+}
+
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -196,6 +202,51 @@ h1 {
     linear-gradient(90deg, rgba(15, 23, 42, 0.09) 1px, transparent 1px),
     #edf4f7;
   background-size: 36px 36px;
+}
+
+.maplibre-container {
+  overflow: hidden;
+  background: #dbeafe;
+}
+
+.map-canvas {
+  position: absolute;
+  inset: 0;
+}
+
+.map-empty {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  gap: 6px;
+  width: min(320px, calc(100% - 32px));
+  padding: 18px;
+  transform: translate(-50%, -50%);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.94);
+  text-align: center;
+  box-shadow: var(--shadow-soft);
+}
+
+.map-empty svg {
+  margin: 0 auto;
+  color: var(--color-warning);
+}
+
+.map-empty span {
+  color: var(--color-muted);
+  font-size: 0.92rem;
+}
+
+.drone-marker {
+  width: 18px;
+  height: 18px;
+  border: 3px solid #ffffff;
+  border-radius: 50%;
+  background: var(--color-primary);
+  box-shadow: 0 0 0 5px rgba(220, 38, 38, 0.22);
 }
 
 .map-crosshair {
