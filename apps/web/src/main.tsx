@@ -55,6 +55,7 @@ type DjiBridge = {
   ) => string | void;
   platformLoadComponent?: (name: string, param: string) => string | void;
   thingConnect?: (username: string, password: string, callback: string) => string | void;
+  thingSetConnectCallback?: (callback: string) => string | void;
   thingGetConnectState?: () => boolean;
   thingGetConfigs?: () => string;
   apiSetToken?: (token: string) => string | void;
@@ -366,6 +367,12 @@ function PilotPage() {
         );
       });
       if (thingResult.code !== 0) throw new Error(thingResult.message ?? "Falha no modulo MQTT");
+      bridgeCall("Thing callback", (bridge) => {
+        if (!bridge.thingSetConnectCallback) {
+          throw new Error("Metodo JSBridge indisponivel: thingSetConnectCallback");
+        }
+        return bridge.thingSetConnectCallback("uasPilotBridgeThingCallback");
+      });
       bridgeCall("Thing connect", (bridge) => {
         if (!bridge.thingConnect) {
           throw new Error("Metodo JSBridge indisponivel: thingConnect");
