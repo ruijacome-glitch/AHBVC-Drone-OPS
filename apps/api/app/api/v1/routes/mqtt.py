@@ -1,11 +1,25 @@
 from fastapi import APIRouter, HTTPException, Path, Query
 from sqlalchemy import text
+from datetime import datetime
+from decimal import Decimal
 
 from app.db.session import AsyncSessionLocal
 
 from app.services.dji_mqtt import dji_mqtt_consumer
 
 router = APIRouter(prefix="/dji/mqtt", tags=["dji-mqtt"])
+
+
+def _json_telemetry(row: object) -> dict[str, object]:
+    values = dict(row)  # type: ignore[arg-type]
+    return {
+        key: float(value)
+        if isinstance(value, Decimal)
+        else value.isoformat().replace("+00:00", "Z")
+        if isinstance(value, datetime)
+        else value
+        for key, value in values.items()
+    }
 
 
 @router.get("/status")
@@ -37,7 +51,7 @@ async def latest_telemetry(
         row = result.mappings().first()
     if row is None:
         raise HTTPException(status_code=404, detail="No telemetry available for this drone")
-    return dict(row)
+    return _json_telemetry(row)
 
 
 @router.get("/telemetry/{drone_sn}/history")
@@ -61,4 +75,4 @@ async def telemetry_history(
             ),
             {"drone_sn": drone_sn, "limit": limit},
         )
-        return [dict(row) for row in result.mappings().all()]
+        return [_json_telemetry(row) for row in result.mappings().all()]
