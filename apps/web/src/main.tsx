@@ -65,7 +65,7 @@ type DjiBridge = {
 declare global {
   interface Window {
     djiBridge?: DjiBridge;
-    uasPilotBridgeThingCallback?: (payload: string) => void;
+    uasPilotBridgeThingCallback?: (payload: string | boolean) => void;
   }
 }
 
@@ -235,13 +235,13 @@ function PilotPage() {
   const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    window.uasPilotBridgeThingCallback = (payload: string) => {
-      const connected = payload === "true" || payload === "1";
+    window.uasPilotBridgeThingCallback = (payload: string | boolean) => {
+      const connected = payload === true || payload === "true" || payload === "1";
       setMqttState(connected ? "connected" : "disconnected");
       setStep(
         "thing",
         connected ? "ok" : "running",
-        `Callback MQTT: ${payload}`,
+        `Callback MQTT: ${String(payload)}`,
       );
     };
 
@@ -376,8 +376,13 @@ function PilotPage() {
           "uasPilotBridgeThingCallback",
         );
       });
-      await new Promise((resolve) => window.setTimeout(resolve, 1200));
-      const connectState = window.djiBridge?.thingGetConnectState?.();
+      let connectState: boolean | undefined;
+      const deadline = Date.now() + 5000;
+      while (Date.now() < deadline) {
+        connectState = window.djiBridge?.thingGetConnectState?.();
+        if (connectState === true) break;
+        await new Promise((resolve) => window.setTimeout(resolve, 500));
+      }
       if (connectState === true) {
         setMqttState("connected");
         setStep("thing", "ok", "MQTT ligado (thingGetConnectState=true).");
