@@ -69,6 +69,12 @@ type Telemetry = {
   observed_at: string;
 };
 
+type FlightTrack = {
+  geometry: { type: "LineString"; coordinates: [number, number, number][] };
+  started_at: string;
+  ended_at: string | null;
+};
+
 type DjiBridge = {
   platformVerifyLicense?: (appId: string, appKey: string, license: string) => string | void;
   platformSetWorkspaceId?: (uuid: string) => string | void;
@@ -212,6 +218,7 @@ function OpsDashboard() {
     }
   });
   const [history, setHistory] = React.useState<Telemetry[]>([]);
+  const [track, setTrack] = React.useState<FlightTrack | null>(null);
   const [mqttStatus, setMqttStatus] = React.useState<MqttStatus | null>(null);
   const [statusLoading, setStatusLoading] = React.useState(true);
   const droneSn = "1581F5BKP256200BF008";
@@ -220,11 +227,12 @@ function OpsDashboard() {
     let active = true;
     const refresh = async () => {
       try {
-        const [latestResponse, historyResponse, mqttResponse] = await Promise.all([
+        const [latestResponse, historyResponse, trackResponse, mqttResponse] = await Promise.all([
           fetch(`${apiBaseUrl}/api/v1/dji/mqtt/telemetry/${droneSn}/latest`, { cache: "no-store" }),
           fetch(`${apiBaseUrl}/api/v1/dji/mqtt/telemetry/${droneSn}/history?limit=200`, {
             cache: "no-store",
           }),
+          fetch(`${apiBaseUrl}/api/v1/dji/mqtt/telemetry/${droneSn}/track`, { cache: "no-store" }),
           fetch(`${apiBaseUrl}/api/v1/dji/mqtt/status`, { cache: "no-store" }),
         ]);
         if (!active) return;
@@ -234,6 +242,7 @@ function OpsDashboard() {
           window.localStorage.setItem("uas:last-telemetry", JSON.stringify(latest));
         }
         setHistory(historyResponse.ok ? ((await historyResponse.json()) as Telemetry[]) : []);
+        setTrack(trackResponse.ok ? ((await trackResponse.json()) as FlightTrack) : null);
         setMqttStatus(mqttResponse.ok ? ((await mqttResponse.json()) as MqttStatus) : null);
       } catch {
         if (active) setMqttStatus(null);
@@ -326,7 +335,7 @@ function OpsDashboard() {
 
         <section className="ops-grid">
           <article className="map-panel" aria-label="Mapa operacional">
-            <TelemetryMap history={history} />
+            <TelemetryMap history={history} track={track} />
             <div className="map-footer">
               <strong>Mapa em tempo real</strong>
               <span>
@@ -374,7 +383,7 @@ function OpsDashboard() {
   );
 }
 
-function TelemetryMap({ history }: { history: Telemetry[] }) {
+function TelemetryMap({ history, track }: { history: Telemetry[]; track: FlightTrack | null }) {
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const mapRef = React.useRef<maplibregl.Map | null>(null);
   const markerRef = React.useRef<maplibregl.Marker | null>(null);
@@ -382,6 +391,16 @@ function TelemetryMap({ history }: { history: Telemetry[] }) {
   const validHistory = history.filter(
     (point) => point.latitude !== null && point.longitude !== null && (point.latitude !== 0 || point.longitude !== 0),
   );
+  const routeCoordinates = track?.geometry.coordinates?.length
+    ? track.geometry.coordinates.map(([longitude, latitude]) => [longitude, latitude] as [number, number])
+    : validHistory
+        .slice()
+        .reverse()
+        .flatMap((point) =>
+          point.latitude !== null && point.longitude !== null
+            ? [[point.longitude, point.latitude] as [number, number]]
+            : [],
+        );
 
   React.useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -415,30 +434,22 @@ function TelemetryMap({ history }: { history: Telemetry[] }) {
 
   React.useEffect(() => {
     const map = mapRef.current;
-    if (!map || validHistory.length === 0) return;
-    const latest = validHistory[0];
-    if (latest.latitude === null || latest.longitude === null) return;
+    if (!map || routeCoordinates.length === 0) return;
+    const latest = routeCoordinates[routeCoordinates.length - 1];
     if (!markerRef.current) {
       const element = document.createElement("div");
       element.className = "drone-marker";
-      markerRef.current = new maplibregl.Marker({ element }).setLngLat([latest.longitude, latest.latitude]).addTo(map);
+      markerRef.current = new maplibregl.Marker({ element }).setLngLat(latest).addTo(map);
     } else {
-      markerRef.current.setLngLat([latest.longitude, latest.latitude]);
+      markerRef.current.setLngLat(latest);
     }
-    map.easeTo({ center: [latest.longitude, latest.latitude], duration: 500 });
-  }, [validHistory]);
+    map.easeTo({ center: latest, duration: 500 });
+  }, [routeCoordinates]);
 
   React.useEffect(() => {
     const map = mapRef.current;
-    if (!map || validHistory.length < 2) return;
-    const coordinates = validHistory
-      .slice()
-      .reverse()
-      .flatMap((point) =>
-        point.latitude !== null && point.longitude !== null
-          ? [[point.longitude, point.latitude] as [number, number]]
-          : [],
-      );
+    if (!map || routeCoordinates.length < 2) return;
+    const coordinates = routeCoordinates;
     const updateRoute = () => {
       if (!routeLayerRef.current) {
         map.addSource("flight-route", {
@@ -462,12 +473,12 @@ function TelemetryMap({ history }: { history: Telemetry[] }) {
     return () => {
       map.off("load", updateRoute);
     };
-  }, [validHistory]);
+  }, [routeCoordinates]);
 
   return (
     <div className="map-grid maplibre-container">
       <div ref={containerRef} className="map-canvas" />
-      {validHistory.length === 0 ? (
+      {routeCoordinates.length === 0 ? (
         <div className="map-empty">
           <MapPin aria-hidden="true" size={28} />
           <strong>Posição GPS indisponível</strong>
