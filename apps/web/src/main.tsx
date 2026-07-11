@@ -59,6 +59,7 @@ type DjiBridge = {
     description: string,
   ) => string | void;
   platformLoadComponent?: (name: string, param: string) => string | void;
+  platformIsComponentLoaded?: (name: string) => string | boolean;
   thingConnect?: (username: string, password: string, callback: string) => string | void;
   thingSetConnectCallback?: (callback: string) => string | void;
   thingGetConnectState?: () => boolean | string | number | Record<string, unknown>;
@@ -402,21 +403,40 @@ function PilotPage() {
       setStep("api", "ok", config.api_host);
 
       setStep("thing", "running", "A carregar thing module e iniciar MQTT.");
-      const thingResult = bridgeCall("Thing module", (bridge) => {
-        if (!bridge.platformLoadComponent) {
-          throw new Error("Metodo JSBridge indisponivel: platformLoadComponent");
+      const thingLoaded = parseConnectState(
+        window.djiBridge?.platformIsComponentLoaded?.("thing"),
+      );
+      if (thingLoaded) {
+        const reconnectResult = bridgeCall("Thing reconnect", (bridge) => {
+          if (!bridge.thingConnect) {
+            throw new Error("Metodo JSBridge indisponivel: thingConnect");
+          }
+          return bridge.thingConnect(
+            config.mqtt_username ?? "",
+            config.mqtt_password ?? "",
+            "connectCallback",
+          );
+        });
+        if (reconnectResult.code !== 0) {
+          throw new Error(reconnectResult.message ?? "Falha ao reconectar MQTT");
         }
-        return bridge.platformLoadComponent(
-          "thing",
-          JSON.stringify({
-            host: config.mqtt_url,
-            connectCallback: "connectCallback",
-            username: config.mqtt_username,
-            password: config.mqtt_password,
-          }),
-        );
-      });
-      if (thingResult.code !== 0) throw new Error(thingResult.message ?? "Falha no modulo MQTT");
+      } else {
+        const thingResult = bridgeCall("Thing module", (bridge) => {
+          if (!bridge.platformLoadComponent) {
+            throw new Error("Metodo JSBridge indisponivel: platformLoadComponent");
+          }
+          return bridge.platformLoadComponent(
+            "thing",
+            JSON.stringify({
+              host: config.mqtt_url,
+              connectCallback: "connectCallback",
+              username: config.mqtt_username,
+              password: config.mqtt_password,
+            }),
+          );
+        });
+        if (thingResult.code !== 0) throw new Error(thingResult.message ?? "Falha no modulo MQTT");
+      }
       let connectState: boolean | undefined;
       let mqttConfirmed = false;
       const deadline = Date.now() + 5000;
