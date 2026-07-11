@@ -56,12 +56,33 @@ type DjiBridge = {
   platformLoadComponent?: (name: string, param: string) => string | void;
   thingConnect?: (username: string, password: string, callback: string) => string | void;
   thingSetConnectCallback?: (callback: string) => string | void;
-  thingGetConnectState?: () => boolean;
+  thingGetConnectState?: () => boolean | string | number | Record<string, unknown>;
   thingGetConfigs?: () => string;
   apiSetToken?: (token: string) => string | void;
   platformGetRemoteControllerSN?: () => string;
   platformGetAircraftSN?: () => string;
 };
+
+function parseConnectState(value: unknown): boolean | undefined {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value === 1;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (["true", "1", "connected", "success"].includes(normalized)) return true;
+    if (["false", "0", "disconnected", "failed"].includes(normalized)) return false;
+    try {
+      return parseConnectState(JSON.parse(value));
+    } catch {
+      return undefined;
+    }
+  }
+  if (value && typeof value === "object") {
+    const response = value as Record<string, unknown>;
+    if ("data" in response) return parseConnectState(response.data);
+    if ("connected" in response) return parseConnectState(response.connected);
+  }
+  return undefined;
+}
 
 declare global {
   interface Window {
@@ -237,11 +258,12 @@ function PilotPage() {
 
   React.useEffect(() => {
     window.uasPilotBridgeThingCallback = (payload: string | boolean) => {
-      const connected = payload === true || payload === "true" || payload === "1";
+      const connected = parseConnectState(payload);
+      if (connected === undefined) return;
       setMqttState(connected ? "connected" : "disconnected");
       setStep(
         "thing",
-        connected ? "ok" : "running",
+        connected ? "ok" : "error",
         `Callback MQTT: ${String(payload)}`,
       );
     };
@@ -386,8 +408,9 @@ function PilotPage() {
       let connectState: boolean | undefined;
       const deadline = Date.now() + 5000;
       while (Date.now() < deadline) {
-        connectState = window.djiBridge?.thingGetConnectState?.();
-        if (connectState === true) break;
+        const rawConnectState = window.djiBridge?.thingGetConnectState?.();
+        connectState = parseConnectState(rawConnectState);
+        if (connectState !== undefined) break;
         await new Promise((resolve) => window.setTimeout(resolve, 500));
       }
       if (connectState === true) {
@@ -410,7 +433,11 @@ function PilotPage() {
           }
           return bridge.platformLoadComponent(
             "ws",
-            JSON.stringify({ host: config.ws_host, token: config.api_token }),
+            JSON.stringify({
+              host: config.ws_host,
+              token: config.api_token,
+              connectCallback: "uasPilotBridgeWsCallback",
+            }),
           );
         });
         if (wsResult.code !== 0) throw new Error(wsResult.message ?? "Falha no modulo WS");
