@@ -450,11 +450,15 @@ function PilotPage() {
         mqttConfirmed = true;
         setMqttState("connected");
         setStep("thing", "ok", "MQTT ligado (thingGetConnectState=true).");
-      } else if (connectState === false) {
-        setMqttState("disconnected");
-        setStep("thing", "error", "MQTT desligado (thingGetConnectState=false).");
       } else {
-        setStep("thing", "running", "A validar estado MQTT no backend.");
+        setMqttState("unknown");
+        setStep(
+          "thing",
+          "running",
+          connectState === false
+            ? "Pilot reportou estado local desligado; a validar sessão MQTT real no backend."
+            : "A validar estado MQTT no backend.",
+        );
         const backendDeadline = Date.now() + 10000;
         while (Date.now() < backendDeadline) {
           const backendStatus = await getBackendMqttStatus();
