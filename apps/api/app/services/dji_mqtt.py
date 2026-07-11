@@ -31,6 +31,9 @@ DJI_MQTT_TOPICS = (
 @dataclass
 class DeviceMqttState:
     sn: str
+    gateway_sn: str | None = None
+    model: dict[str, str] | None = None
+    online_status: bool | None = None
     last_topic: str | None = None
     last_payload: dict[str, Any] | None = None
     last_message_at: datetime | None = None
@@ -92,6 +95,9 @@ class DjiMqttConsumer:
                 "devices": {
                     sn: {
                         "sn": device.sn,
+                        "gateway_sn": device.gateway_sn,
+                        "model": device.model,
+                        "online_status": device.online_status,
                         "last_topic": device.last_topic,
                         "last_message_at": device.last_message_at.isoformat()
                         if device.last_message_at
@@ -146,12 +152,44 @@ class DjiMqttConsumer:
             logger.warning("Ignoring non-JSON DJI MQTT payload on %s", message.topic)
             return
 
+        now = datetime.now(timezone.utc)
         with self._lock:
             device = self._state.devices.setdefault(sn, DeviceMqttState(sn=sn))
             device.last_topic = message.topic
             device.last_payload = payload
-            device.last_message_at = datetime.now(timezone.utc)
+            device.last_message_at = now
             device.message_count += 1
+
+            if parts[:2] == ["sys", "product"] and len(parts) >= 4 and parts[3] == "status":
+                self._apply_topology_update(sn, payload, now)
+
+    def _apply_topology_update(
+        self,
+        gateway_sn: str,
+        payload: dict[str, Any],
+        timestamp: datetime,
+    ) -> None:
+        if payload.get("method") != "update_topo":
+            return
+        data = payload.get("data")
+        if not isinstance(data, dict):
+            return
+        for sub_device in data.get("sub_devices", []):
+            if not isinstance(sub_device, dict) or not isinstance(sub_device.get("sn"), str):
+                continue
+            sn = sub_device["sn"]
+            device = self._state.devices.setdefault(sn, DeviceMqttState(sn=sn))
+            device.gateway_sn = gateway_sn
+            device.model = {
+                key: str(sub_device[key])
+                for key in ("domain", "type", "sub_type", "thing_version")
+                if key in sub_device
+            }
+            device.online_status = True
+            device.last_topic = f"sys/product/{gateway_sn}/status"
+            device.last_message_at = timestamp
+            # Device secrets and nonces are deliberately never retained or exposed.
+            device.last_payload = {"method": "update_topo", "gateway": gateway_sn}
 
     def _set_error(self, error: str) -> None:
         with self._lock:
