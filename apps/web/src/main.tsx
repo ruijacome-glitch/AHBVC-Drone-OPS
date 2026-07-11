@@ -204,7 +204,8 @@ function useHostMode() {
 
 function App() {
   const mode = useHostMode();
-  return mode === "pilot" ? <PilotPage /> : <OpsDashboard />;
+  if (mode === "pilot") return <PilotPage />;
+  return window.location.pathname === "/history" ? <FlightHistoryPage /> : <OpsDashboard />;
 }
 
 function OpsDashboard() {
@@ -298,6 +299,9 @@ function OpsDashboard() {
           <a className="nav-link active" href="/">
             Operacoes
           </a>
+          <a className="nav-link" href="/history">
+            Historico de voo
+          </a>
           <a className="nav-link" href="/pilot">
             Pilot 2
           </a>
@@ -377,6 +381,74 @@ function OpsDashboard() {
               </div>
             </dl>
           </article>
+        </section>
+      </section>
+    </main>
+  );
+}
+
+type HistoricalTrack = FlightTrack & {
+  id: string;
+  point_count: number;
+};
+
+function FlightHistoryPage() {
+  const [tracks, setTracks] = React.useState<HistoricalTrack[]>([]);
+  const [selectedTrack, setSelectedTrack] = React.useState<HistoricalTrack | null>(null);
+  const droneSn = "1581F5BKP256200BF008";
+
+  React.useEffect(() => {
+    fetch(`${apiBaseUrl}/api/v1/dji/mqtt/telemetry/${droneSn}/tracks?limit=20`, { cache: "no-store" })
+      .then((response) => (response.ok ? response.json() : []))
+      .then((data) => {
+        const history = data as HistoricalTrack[];
+        setTracks(history);
+        setSelectedTrack(history[0] ?? null);
+      })
+      .catch(() => setTracks([]));
+  }, []);
+
+  return (
+    <main className="app-shell">
+      <aside className="sidebar" aria-label="Navegacao principal">
+        <div className="brand-lockup">
+          <div className="brand-mark">UAS</div>
+          <div><strong>UAS Platform</strong><span>AHBVC Drone OPS</span></div>
+        </div>
+        <nav>
+          <a className="nav-link" href="/">Operacoes</a>
+          <a className="nav-link active" href="/history">Historico de voo</a>
+          <a className="nav-link" href="/pilot">Pilot 2</a>
+        </nav>
+      </aside>
+      <section className="workspace">
+        <header className="topbar">
+          <div>
+            <p className="eyebrow">Registos de operação</p>
+            <h1>Histórico de voo</h1>
+          </div>
+          <span className="status-pill online">M30T</span>
+        </header>
+        <section className="history-layout">
+          <div className="panel history-list" aria-label="Lista de voos">
+            <div className="panel-heading"><Activity aria-hidden="true" size={20} /><h2>Voos registados</h2></div>
+            {tracks.length === 0 ? <p className="empty-state">Ainda não existem rotas GPS registadas.</p> : null}
+            {tracks.map((trackItem) => (
+              <button
+                className={`history-item ${selectedTrack?.id === trackItem.id ? "selected" : ""}`}
+                key={trackItem.id}
+                type="button"
+                onClick={() => setSelectedTrack(trackItem)}
+              >
+                <strong>{new Date(trackItem.started_at).toLocaleString("pt-PT")}</strong>
+                <span>{trackItem.point_count} pontos GPS</span>
+                <span>{trackItem.ended_at ? "Concluído" : "Em curso"}</span>
+              </button>
+            ))}
+          </div>
+          <div className="history-map">
+            {selectedTrack ? <TelemetryMap history={[]} track={selectedTrack} /> : <div className="map-empty"><MapPin size={28} /><strong>Selecione um voo</strong></div>}
+          </div>
         </section>
       </section>
     </main>

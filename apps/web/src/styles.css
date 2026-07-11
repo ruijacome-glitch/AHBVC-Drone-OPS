@@ -192,6 +192,52 @@ h1 {
   gap: 16px;
 }
 
+.history-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.7fr) minmax(0, 1.5fr);
+  gap: 16px;
+}
+
+.history-list {
+  align-self: start;
+}
+
+.history-item {
+  display: grid;
+  gap: 5px;
+  width: 100%;
+  margin-top: 8px;
+  padding: 13px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--color-foreground);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 180ms ease, background 180ms ease;
+}
+
+.history-item:hover,
+.history-item:focus-visible,
+.history-item.selected {
+  border-color: var(--color-primary);
+  background: #fff7f7;
+  outline: none;
+}
+
+.history-item span,
+.empty-state {
+  color: var(--color-muted);
+}
+
+.history-map {
+  min-height: 520px;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: #dbeafe;
+}
+
 .map-panel {
   overflow: hidden;
   min-height: 520px;
@@ -472,7 +518,8 @@ h1 {
 
   .metric-grid,
   .pilot-status-grid,
-  .ops-grid {
+  .ops-grid,
+  .history-layout {
     grid-template-columns: 1fr;
   }
 
