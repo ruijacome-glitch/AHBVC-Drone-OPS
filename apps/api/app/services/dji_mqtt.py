@@ -24,6 +24,7 @@ DJI_MQTT_TOPICS = (
     "thing/product/+/events_reply",
     "thing/product/+/requests_reply",
     "sys/product/+/network/probe",
+    "sys/product/+/status",
     "sys/product/+/status_reply",
 )
 

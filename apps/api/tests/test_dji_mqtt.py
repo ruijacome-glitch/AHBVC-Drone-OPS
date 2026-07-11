@@ -1,7 +1,12 @@
 import json
 from types import SimpleNamespace
 
-from app.services.dji_mqtt import DjiMqttConsumer
+from app.services.dji_mqtt import DJI_MQTT_TOPICS, DjiMqttConsumer
+
+
+def test_mqtt_consumer_subscribes_to_official_status_topics() -> None:
+    assert "sys/product/+/status" in DJI_MQTT_TOPICS
+    assert "thing/product/+/requests" in DJI_MQTT_TOPICS
 
 
 def test_mqtt_consumer_records_json_message() -> None:
