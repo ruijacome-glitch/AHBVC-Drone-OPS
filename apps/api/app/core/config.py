@@ -29,6 +29,11 @@ class Settings(BaseSettings):
     dji_gateway_model_type: str = "119"
     dji_gateway_model_sub_type: str = "0"
     dji_gateway_callsign: str = "DJI RC Plus"
+    dji_aircraft_sn: str | None = None
+    dji_aircraft_model_domain: str = "0"
+    dji_aircraft_model_type: str = "67"
+    dji_aircraft_model_sub_type: str = "1"
+    dji_aircraft_callsign: str = "Matrice 30T"
     dji_cloud_api_docs_url: AnyUrl = "https://developer.dji.com/doc/cloud-api-tutorial/en/"
 
     mqtt_public_host: str = "mqtt.uas.ahbvc.org.pt"

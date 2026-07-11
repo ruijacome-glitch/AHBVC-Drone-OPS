@@ -97,6 +97,28 @@ async def obtain_device_topology_list(
         user_callsign=settings.dji_workspace_name,
         user_id=settings.dji_workspace_id or "",
     )
+    aircraft = None
+    if settings.dji_aircraft_sn:
+        aircraft_model = DjiDeviceModel(
+            key=(
+                f"{settings.dji_aircraft_model_domain}-"
+                f"{settings.dji_aircraft_model_type}-"
+                f"{settings.dji_aircraft_model_sub_type}"
+            ),
+            domain=settings.dji_aircraft_model_domain,
+            type=settings.dji_aircraft_model_type,
+            sub_type=settings.dji_aircraft_model_sub_type,
+        )
+        aircraft = DjiTopologyDevice(
+            device_callsign=settings.dji_aircraft_callsign,
+            device_model=aircraft_model,
+            online_status=True,
+            sn=settings.dji_aircraft_sn,
+            user_callsign=settings.dji_workspace_name,
+            user_id=settings.dji_workspace_id or "",
+        )
     return DjiDeviceTopologyResponse(
-        data=DjiDeviceTopologyData(topologies=[DjiDeviceTopology(parents=[gateway])])
+        data=DjiDeviceTopologyData(
+            topologies=[DjiDeviceTopology(hosts=[aircraft] if aircraft else [], parents=[gateway])]
+        )
     )

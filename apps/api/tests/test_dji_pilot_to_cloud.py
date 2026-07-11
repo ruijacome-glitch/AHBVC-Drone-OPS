@@ -29,10 +29,12 @@ def test_obtain_device_topology_list_returns_configured_gateway() -> None:
         "dji_pilot_api_token": settings.dji_pilot_api_token,
         "dji_workspace_id": settings.dji_workspace_id,
         "dji_gateway_sn": settings.dji_gateway_sn,
+        "dji_aircraft_sn": settings.dji_aircraft_sn,
     }
     settings.dji_pilot_api_token = "test-token"
     settings.dji_workspace_id = "workspace-id"
     settings.dji_gateway_sn = "gateway-sn"
+    settings.dji_aircraft_sn = "aircraft-sn"
 
     try:
         response = client.get(
@@ -42,7 +44,13 @@ def test_obtain_device_topology_list_returns_configured_gateway() -> None:
 
         assert response.status_code == 200
         payload = response.json()["data"]["list"]
-        assert payload[0]["hosts"] == []
+        assert payload[0]["hosts"][0]["sn"] == "aircraft-sn"
+        assert payload[0]["hosts"][0]["device_model"] == {
+            "key": "0-67-1",
+            "domain": "0",
+            "type": "67",
+            "sub_type": "1",
+        }
         assert payload[0]["parents"][0]["sn"] == "gateway-sn"
         assert payload[0]["parents"][0]["device_model"] == {
             "key": "2-119-0",
