@@ -203,9 +203,17 @@ function App() {
 
 function OpsDashboard() {
   const reduceMotion = useReducedMotion();
-  const [telemetry, setTelemetry] = React.useState<Telemetry | null>(null);
+  const [telemetry, setTelemetry] = React.useState<Telemetry | null>(() => {
+    try {
+      const cached = window.localStorage.getItem("uas:last-telemetry");
+      return cached ? (JSON.parse(cached) as Telemetry) : null;
+    } catch {
+      return null;
+    }
+  });
   const [history, setHistory] = React.useState<Telemetry[]>([]);
   const [mqttStatus, setMqttStatus] = React.useState<MqttStatus | null>(null);
+  const [statusLoading, setStatusLoading] = React.useState(true);
   const droneSn = "1581F5BKP256200BF008";
 
   React.useEffect(() => {
@@ -220,11 +228,17 @@ function OpsDashboard() {
           fetch(`${apiBaseUrl}/api/v1/dji/mqtt/status`, { cache: "no-store" }),
         ]);
         if (!active) return;
-        setTelemetry(latestResponse.ok ? ((await latestResponse.json()) as Telemetry) : null);
+        if (latestResponse.ok) {
+          const latest = (await latestResponse.json()) as Telemetry;
+          setTelemetry(latest);
+          window.localStorage.setItem("uas:last-telemetry", JSON.stringify(latest));
+        }
         setHistory(historyResponse.ok ? ((await historyResponse.json()) as Telemetry[]) : []);
         setMqttStatus(mqttResponse.ok ? ((await mqttResponse.json()) as MqttStatus) : null);
       } catch {
         if (active) setMqttStatus(null);
+      } finally {
+        if (active) setStatusLoading(false);
       }
     };
     void refresh();
@@ -245,9 +259,10 @@ function OpsDashboard() {
       gatewayLastMessage &&
       Date.now() - new Date(gatewayLastMessage).getTime() < 15000,
   );
+  const gatewayLabel = statusLoading ? "A verificar" : gatewayOnline ? "Online" : "Offline";
   const metrics = [
     { label: "Drones simultaneos", value: telemetry ? "1 / 2" : "0 / 2", icon: Radio },
-    { label: "Gateway DJI", value: gatewayOnline ? "Online" : "Offline", icon: Wifi },
+    { label: "Gateway DJI", value: gatewayLabel, icon: Wifi },
     {
       label: "Bateria M30T",
       value: telemetry?.battery_percent == null ? "--" : `${Math.round(telemetry.battery_percent)}%`,
@@ -289,8 +304,8 @@ function OpsDashboard() {
             <p className="eyebrow">Bombeiros Voluntarios de Cascais</p>
             <h1>Consola inicial de operacoes UAS</h1>
           </div>
-          <span className={`status-pill ${online ? "online" : "offline"}`}>
-            {online ? "Telemetria online" : "Sem telemetria"}
+          <span className={`status-pill ${statusLoading ? "checking" : online ? "online" : "offline"}`}>
+            {statusLoading ? "A verificar telemetria" : online ? "Telemetria online" : "Sem telemetria"}
           </span>
         </header>
 

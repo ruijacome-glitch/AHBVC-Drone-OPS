@@ -148,6 +148,12 @@ h1 {
   color: #166534;
 }
 
+.checking {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
