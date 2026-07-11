@@ -495,6 +495,7 @@ function TelemetryMap({ history, track }: { history: Telemetry[]; track: FlightT
       attributionControl: { compact: true },
     });
     map.addControl(new maplibregl.NavigationControl(), "top-right");
+    map.once("load", () => map.resize());
     mapRef.current = map;
     return () => {
       markerRef.current?.remove();
@@ -523,7 +524,7 @@ function TelemetryMap({ history, track }: { history: Telemetry[]; track: FlightT
     if (!map || routeCoordinates.length < 2) return;
     const coordinates = routeCoordinates;
     const updateRoute = () => {
-      if (!routeLayerRef.current) {
+      if (!map.getSource("flight-route")) {
         map.addSource("flight-route", {
           type: "geojson",
           data: { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates } },
@@ -534,11 +535,23 @@ function TelemetryMap({ history, track }: { history: Telemetry[]; track: FlightT
           source: "flight-route",
           paint: { "line-color": "#dc2626", "line-width": 4, "line-opacity": 0.85 },
         });
-        routeLayerRef.current = true;
-      } else {
-        const source = map.getSource("flight-route") as maplibregl.GeoJSONSource;
-        source.setData({ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates } });
       }
+      if (!map.getLayer("flight-route-line")) {
+        map.addLayer({
+          id: "flight-route-line",
+          type: "line",
+          source: "flight-route",
+          paint: { "line-color": "#dc2626", "line-width": 4, "line-opacity": 0.85 },
+        });
+      }
+      const source = map.getSource("flight-route") as maplibregl.GeoJSONSource;
+      source.setData({ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates } });
+      routeLayerRef.current = true;
+      const bounds = coordinates.reduce(
+        (result, coordinate) => result.extend(coordinate),
+        new maplibregl.LngLatBounds(coordinates[0], coordinates[0]),
+      );
+      map.fitBounds(bounds, { padding: 48, maxZoom: 17, duration: 0 });
     };
     if (map.isStyleLoaded()) updateRoute();
     else map.once("load", updateRoute);
