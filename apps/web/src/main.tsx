@@ -473,6 +473,24 @@ function TelemetryMap({ history, track }: { history: Telemetry[]; track: FlightT
             ? [[point.longitude, point.latitude] as [number, number]]
             : [],
         );
+  const routeFallbackPoints = React.useMemo(() => {
+    if (routeCoordinates.length < 2) return "";
+    const longitudes = routeCoordinates.map(([longitude]) => longitude);
+    const latitudes = routeCoordinates.map(([, latitude]) => latitude);
+    const minLongitude = Math.min(...longitudes);
+    const maxLongitude = Math.max(...longitudes);
+    const minLatitude = Math.min(...latitudes);
+    const maxLatitude = Math.max(...latitudes);
+    const longitudeRange = Math.max(maxLongitude - minLongitude, 0.00001);
+    const latitudeRange = Math.max(maxLatitude - minLatitude, 0.00001);
+    return routeCoordinates
+      .map(([longitude, latitude]) => {
+        const x = 6 + ((longitude - minLongitude) / longitudeRange) * 88;
+        const y = 94 - ((latitude - minLatitude) / latitudeRange) * 88;
+        return `${x.toFixed(2)},${y.toFixed(2)}`;
+      })
+      .join(" ");
+  }, [routeCoordinates]);
 
   React.useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -563,6 +581,11 @@ function TelemetryMap({ history, track }: { history: Telemetry[]; track: FlightT
   return (
     <div className="map-grid maplibre-container">
       <div ref={containerRef} className="map-canvas" />
+      {routeFallbackPoints ? (
+        <svg className="route-fallback" viewBox="0 0 100 100" aria-label="Trajeto GPS">
+          <polyline points={routeFallbackPoints} />
+        </svg>
+      ) : null}
       {routeCoordinates.length === 0 ? (
         <div className="map-empty">
           <MapPin aria-hidden="true" size={28} />
