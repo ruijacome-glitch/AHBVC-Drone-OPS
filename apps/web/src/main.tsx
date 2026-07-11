@@ -45,6 +45,11 @@ type BridgeResult = {
   data?: unknown;
 };
 
+type MqttStatus = {
+  connected: boolean;
+  devices: Record<string, { message_count: number }>;
+};
+
 type DjiBridge = {
   platformVerifyLicense?: (appId: string, appKey: string, license: string) => string | void;
   platformSetWorkspaceId?: (uuid: string) => string | void;
@@ -82,6 +87,16 @@ function parseConnectState(value: unknown): boolean | undefined {
     if ("connected" in response) return parseConnectState(response.connected);
   }
   return undefined;
+}
+
+async function getBackendMqttStatus(): Promise<MqttStatus | null> {
+  try {
+    const response = await fetch(`${apiBaseUrl}/api/v1/dji/mqtt/status`, { cache: "no-store" });
+    if (!response.ok) return null;
+    return (await response.json()) as MqttStatus;
+  } catch {
+    return null;
+  }
 }
 
 declare global {
@@ -420,7 +435,20 @@ function PilotPage() {
         setMqttState("disconnected");
         setStep("thing", "error", "MQTT desligado (thingGetConnectState=false).");
       } else {
-        setStep("thing", "running", `A aguardar estado MQTT em ${config.mqtt_url}.`);
+        setStep("thing", "running", "A validar estado MQTT no backend.");
+        const backendDeadline = Date.now() + 10000;
+        while (Date.now() < backendDeadline) {
+          const backendStatus = await getBackendMqttStatus();
+          const receivedDeviceMessages = Object.values(backendStatus?.devices ?? {}).some(
+            (device) => device.message_count > 0,
+          );
+          if (backendStatus?.connected && receivedDeviceMessages) {
+            setMqttState("connected");
+            setStep("thing", "ok", "MQTT confirmado pelo backend e por mensagens DJI recebidas.");
+            break;
+          }
+          await new Promise((resolve) => window.setTimeout(resolve, 1000));
+        }
       }
 
       if (!config.ws_host) {
