@@ -48,6 +48,15 @@ class DjiDeviceTopologyResponse(BaseModel):
     data: DjiDeviceTopologyData = Field(default_factory=DjiDeviceTopologyData)
 
 
+class DjiDeviceBindingRequest(BaseModel):
+    device_sn: str = Field(min_length=3)
+    user_id: str = Field(min_length=1)
+    workspace_id: str = Field(min_length=1)
+
+
+_bound_devices: dict[str, DjiDeviceBindingRequest] = {}
+
+
 async def verify_dji_pilot_token(
     x_auth_token: Annotated[str, Header(min_length=1, alias="x-auth-token")],
 ) -> None:
@@ -122,3 +131,18 @@ async def obtain_device_topology_list(
             topologies=[DjiDeviceTopology(hosts=[aircraft] if aircraft else [], parents=[gateway])]
         )
     )
+
+
+@router.post(
+    "/manage/api/v1/devices/{device_sn}/binding",
+    dependencies=[Depends(verify_dji_pilot_token)],
+)
+async def bind_device(
+    device_sn: str,
+    payload: DjiDeviceBindingRequest,
+) -> dict[str, object]:
+    """Bind a Pilot gateway to the workspace, matching the DJI demo flow."""
+    if payload.device_sn != device_sn or payload.workspace_id != settings.dji_workspace_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid device binding")
+    _bound_devices[device_sn] = payload
+    return {"code": 0, "message": "success", "data": {}}

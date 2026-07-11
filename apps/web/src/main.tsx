@@ -485,6 +485,32 @@ function PilotPage() {
         return;
       }
 
+      const gatewaySn =
+        parseBridgeData<string>(window.djiBridge?.platformGetRemoteControllerSN?.()) ?? "--";
+      setControllerSn(gatewaySn);
+      if (gatewaySn !== "--" && config.workspace_id) {
+        const bindingResponse = await fetch(
+          `${apiBaseUrl}/manage/api/v1/devices/${encodeURIComponent(gatewaySn)}/binding`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-auth-token": config.api_token ?? "",
+            },
+            body: JSON.stringify({
+              device_sn: gatewaySn,
+              user_id: config.workspace_id,
+              workspace_id: config.workspace_id,
+            }),
+          },
+        );
+        const bindingResult = (await bindingResponse.json()) as { code?: number; message?: string };
+        if (!bindingResponse.ok || bindingResult.code !== 0) {
+          throw new Error(bindingResult.message ?? "Falha no binding do gateway DJI");
+        }
+        setStep("thing", "ok", `MQTT ligado e gateway ${gatewaySn} associado ao workspace.`);
+      }
+
       if (!config.ws_host) {
         setStep("tsa", "skipped", "Pendente: falta configurar ws_host.");
       } else {
@@ -514,7 +540,6 @@ function PilotPage() {
         if (tsaResult.code !== 0) throw new Error(tsaResult.message ?? "Falha no modulo TSA");
         setStep("tsa", "ok", "WebSocket/TSA carregado; a aguardar dados reais do drone.");
       }
-      setControllerSn(parseBridgeData<string>(window.djiBridge?.platformGetRemoteControllerSN?.()) ?? "--");
       setAircraftSn(parseBridgeData<string>(window.djiBridge?.platformGetAircraftSN?.()) ?? "--");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro desconhecido na configuracao Pilot.");
