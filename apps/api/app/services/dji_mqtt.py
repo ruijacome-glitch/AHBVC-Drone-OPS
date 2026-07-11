@@ -164,6 +164,29 @@ class DjiMqttConsumer:
             if parts[:2] == ["sys", "product"] and len(parts) >= 4 and parts[3] == "status":
                 self._apply_topology_update(sn, payload, now)
 
+        if parts[:2] == ["sys", "product"] and len(parts) >= 4 and parts[3] == "status":
+            self._publish_status_reply(client, message.topic, payload)
+
+    def _publish_status_reply(
+        self,
+        client: mqtt.Client | None,
+        topic: str,
+        payload: dict[str, Any],
+    ) -> None:
+        if client is None or not payload.get("tid") or not payload.get("bid"):
+            return
+        reply = {
+            "tid": payload["tid"],
+            "bid": payload["bid"],
+            "method": payload.get("method"),
+            "data": {"result": 0},
+            "timestamp": int(datetime.now(timezone.utc).timestamp() * 1000),
+        }
+        reply_topic = f"{topic}_reply"
+        result = client.publish(reply_topic, json.dumps(reply), qos=1)
+        if result.rc != mqtt.MQTT_ERR_SUCCESS:
+            logger.warning("Unable to publish DJI status reply on %s: %s", reply_topic, result.rc)
+
     def _apply_topology_update(
         self,
         gateway_sn: str,

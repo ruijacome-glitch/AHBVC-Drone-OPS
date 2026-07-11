@@ -4,9 +4,50 @@ from types import SimpleNamespace
 from app.services.dji_mqtt import DJI_MQTT_TOPICS, DjiMqttConsumer
 
 
+class _PublishResult:
+    rc = 0
+
+
+class _FakeMqttClient:
+    def __init__(self) -> None:
+        self.published: list[tuple[str, str, int]] = []
+
+    def publish(self, topic: str, payload: str, qos: int) -> _PublishResult:
+        self.published.append((topic, payload, qos))
+        return _PublishResult()
+
+
 def test_mqtt_consumer_subscribes_to_official_status_topics() -> None:
     assert "sys/product/+/status" in DJI_MQTT_TOPICS
     assert "thing/product/+/requests" in DJI_MQTT_TOPICS
+
+
+def test_mqtt_consumer_acknowledges_topology_update() -> None:
+    consumer = DjiMqttConsumer()
+    client = _FakeMqttClient()
+    message = SimpleNamespace(
+        topic="sys/product/gateway-123/status",
+        payload=json.dumps(
+            {
+                "tid": "tid-1",
+                "bid": "bid-1",
+                "method": "update_topo",
+                "data": {"sub_devices": []},
+            }
+        ).encode(),
+    )
+
+    consumer._on_message(client, None, message)  # noqa: SLF001
+
+    assert len(client.published) == 1
+    topic, raw_payload, qos = client.published[0]
+    assert topic == "sys/product/gateway-123/status_reply"
+    assert qos == 1
+    reply = json.loads(raw_payload)
+    assert reply["tid"] == "tid-1"
+    assert reply["bid"] == "bid-1"
+    assert reply["method"] == "update_topo"
+    assert reply["data"] == {"result": 0}
 
 
 def test_mqtt_consumer_records_json_message() -> None:
