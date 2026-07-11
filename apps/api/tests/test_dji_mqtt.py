@@ -2,6 +2,7 @@ import json
 from types import SimpleNamespace
 
 from app.services.dji_mqtt import DJI_MQTT_TOPICS, DjiMqttConsumer
+from app.services.dji_telemetry import normalize_osd
 
 
 class _PublishResult:
@@ -63,6 +64,33 @@ def test_mqtt_consumer_records_json_message() -> None:
     assert snapshot["connected"] is False
     assert snapshot["devices"]["aircraft-123"]["last_topic"].endswith("/osd")
     assert snapshot["devices"]["aircraft-123"]["message_count"] == 1
+
+
+def test_normalize_matrice_30t_osd_preserves_thermal_and_navigation_data() -> None:
+    telemetry = normalize_osd(
+        "aircraft-123",
+        "gateway-123",
+        {
+            "timestamp": 1783809012075,
+            "gateway": "gateway-123",
+            "data": {
+                "height": 63.8,
+                "attitude_head": 48.6,
+                "battery": {"capacity_percent": 55},
+                "position_state": {"gps_number": 4, "quality": 0, "rtk_number": 9},
+                "cameras": [{"payload_index": "53-0-0"}],
+                "53-0-0": {"thermal_global_temperature_max": 28.16},
+            },
+        },
+        "0-67-1",
+    )
+
+    assert telemetry.altitude_m == 63.8
+    assert telemetry.heading_deg == 48.6
+    assert telemetry.battery_percent == 55
+    assert telemetry.active_payload == "53-0-0"
+    assert telemetry.gps_status == "gps_number=4;quality=0"
+    assert telemetry.rtk_status == "rtk_number=9;is_fixed=None"
 
 
 def test_mqtt_consumer_ignores_invalid_json() -> None:

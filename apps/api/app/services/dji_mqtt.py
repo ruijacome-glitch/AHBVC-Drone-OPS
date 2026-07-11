@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import asyncio
 import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -10,6 +11,9 @@ from typing import Any
 import paho.mqtt.client as mqtt
 
 from app.core.config import settings
+from app.db.session import AsyncSessionLocal
+from app.services.dji_telemetry import normalize_osd
+from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
 
@@ -163,6 +167,8 @@ class DjiMqttConsumer:
 
             if parts[:2] == ["sys", "product"] and len(parts) >= 4 and parts[3] == "status":
                 self._apply_topology_update(sn, payload, now)
+            elif parts[:2] == ["thing", "product"] and len(parts) >= 4 and parts[3] == "osd":
+                self._persist_osd_message(sn, payload, message.topic)
 
         if parts[:2] == ["sys", "product"] and len(parts) >= 4 and parts[3] == "status":
             self._publish_status_reply(client, message.topic, payload)
@@ -186,6 +192,79 @@ class DjiMqttConsumer:
         result = client.publish(reply_topic, json.dumps(reply), qos=1)
         if result.rc != mqtt.MQTT_ERR_SUCCESS:
             logger.warning("Unable to publish DJI status reply on %s: %s", reply_topic, result.rc)
+
+    def _persist_osd_message(self, device_sn: str, payload: dict[str, Any], topic: str) -> None:
+        gateway_sn = payload.get("gateway")
+        if not isinstance(gateway_sn, str):
+            with self._lock:
+                gateway_sn = self._state.devices.get(device_sn, DeviceMqttState(device_sn)).gateway_sn
+        if not gateway_sn:
+            logger.warning("Ignoring DJI OSD without gateway SN: %s", topic)
+            return
+        model = None
+        with self._lock:
+            model_data = self._state.devices.get(device_sn)
+            if model_data and model_data.model:
+                model = "-".join(model_data.model.get(key, "") for key in ("domain", "type", "sub_type"))
+        telemetry = normalize_osd(device_sn, gateway_sn, payload, model)
+        try:
+            asyncio.run(self._insert_telemetry(telemetry, topic, payload))
+        except Exception:
+            logger.exception("Unable to persist DJI OSD telemetry for %s", device_sn)
+
+    async def _insert_telemetry(self, telemetry: Any, topic: str, payload: dict[str, Any]) -> None:
+        async with AsyncSessionLocal() as session:
+            await session.execute(
+                text(
+                    """
+                    INSERT INTO controllers (gateway_sn, callsign, online_status, last_seen_at)
+                    VALUES (:gateway_sn, :callsign, 'online', :observed_at)
+                    ON CONFLICT (gateway_sn) DO UPDATE SET
+                      online_status = 'online', last_seen_at = EXCLUDED.last_seen_at
+                    """
+                ),
+                {"gateway_sn": telemetry.gateway_serial, "callsign": settings.dji_gateway_callsign,
+                 "observed_at": telemetry.observed_at},
+            )
+            await session.execute(
+                text(
+                    """
+                    INSERT INTO drones (controller_id, serial_number, model, online_status, last_seen_at)
+                    SELECT id, :drone_serial, COALESCE(:model, :default_model), 'online', :observed_at
+                    FROM controllers WHERE gateway_sn = :gateway_sn
+                    ON CONFLICT (serial_number) DO UPDATE SET
+                      controller_id = EXCLUDED.controller_id, model = EXCLUDED.model,
+                      online_status = 'online', last_seen_at = EXCLUDED.last_seen_at
+                    """
+                ),
+                {"drone_serial": telemetry.drone_serial, "gateway_sn": telemetry.gateway_serial,
+                 "model": telemetry.model, "default_model": settings.dji_aircraft_callsign,
+                 "observed_at": telemetry.observed_at},
+            )
+            await session.execute(
+                text(
+                    """
+                    INSERT INTO telemetry_points (
+                      drone_id, controller_id, drone_serial, gateway_serial, model, position,
+                      altitude_m, speed_mps, heading_deg, pitch_deg, roll_deg, yaw_deg,
+                      battery_percent, gps_status, rtk_status, active_payload, flight_mode,
+                      link_quality, source_topic, payload, observed_at
+                    )
+                    SELECT d.id, c.id, :drone_serial, :gateway_serial, :model,
+                      CASE WHEN :longitude BETWEEN -180 AND 180 AND :latitude BETWEEN -90 AND 90
+                        AND (:latitude <> 0 OR :longitude <> 0)
+                        THEN ST_SetSRID(ST_MakePoint(:longitude, :latitude), 4326)::geography END,
+                      :altitude_m, :speed_mps, :heading_deg, :pitch_deg, :roll_deg, :yaw_deg,
+                      :battery_percent, :gps_status, :rtk_status, :active_payload, :flight_mode,
+                      :link_quality, :source_topic, CAST(:payload AS jsonb), :observed_at
+                    FROM drones d JOIN controllers c ON c.gateway_sn = :gateway_serial
+                    WHERE d.serial_number = :drone_serial
+                    """
+                ),
+                {**telemetry.__dict__, "longitude": telemetry.longitude, "latitude": telemetry.latitude,
+                 "source_topic": topic, "payload": json.dumps(payload)},
+            )
+            await session.commit()
 
     def _apply_topology_update(
         self,
