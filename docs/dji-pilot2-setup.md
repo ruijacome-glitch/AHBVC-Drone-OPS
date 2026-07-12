@@ -17,7 +17,7 @@ https://developer.dji.com/doc/cloud-api-tutorial/en/
    - App Basic License
    - Workspace ID as a UUID used by the Cloud API JSBridge
 4. Add the production domains:
-   - `https://pilot.uas.ahbvc.org.pt`
+   - `https://pilot.uas.ahbvc.org.pt/#setup_token=<DJI_PILOT_SETUP_TOKEN>`
    - `https://api.uas.ahbvc.org.pt`
 5. Confirm the exact login/authentication callback contract required by DJI Pilot 2.
 6. Confirm the exact MQTT authentication mechanism expected by Pilot 2.
@@ -60,7 +60,7 @@ In DJI Pilot 2:
 2. Configure the platform URL as:
 
 ```text
-https://pilot.uas.ahbvc.org.pt
+https://pilot.uas.ahbvc.org.pt/#setup_token=<DJI_PILOT_SETUP_TOKEN>
 ```
 
 3. Confirm Pilot 2 can open the page and load bootstrap data from:
@@ -199,7 +199,7 @@ docker compose exec emqx /opt/emqx/bin/emqx ctl clients list
 
 ## Do Not Start Phase 3 Until
 
-- Pilot 2 opens `pilot.uas.ahbvc.org.pt`.
+- Pilot 2 opens `pilot.uas.ahbvc.org.pt` with the configured setup token.
 - The API healthcheck is green.
 - DJI Developer Portal credentials are in `.env`.
 - MQTT `tcp://` connection succeeds from Pilot 2.

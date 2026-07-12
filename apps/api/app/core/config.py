@@ -11,11 +11,18 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://uas_platform:uas_platform@postgres:5432/uas_platform"
     redis_url: str = "redis://redis:6379/0"
     api_cors_origins: str = "https://uas.ahbvc.org.pt,https://pilot.uas.ahbvc.org.pt"
+    api_docs_enabled: bool = False
 
     jwt_secret_key: str = Field(default="change-me", min_length=8)
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 15
     refresh_token_expire_days: int = 14
+    auth_cookie_domain: str = ".uas.ahbvc.org.pt"
+    auth_cookie_secure: bool = True
+    auth_issuer: str = "uas-platform-api"
+    auth_audience: str = "uas-platform-web"
+    login_rate_limit_attempts: int = 5
+    login_rate_limit_window_seconds: int = 900
 
     dji_app_id: str | None = None
     dji_app_key: str | None = None
@@ -24,6 +31,7 @@ class Settings(BaseSettings):
     dji_workspace_id: str | None = None
     dji_workspace_name: str = "AHBVC UAS Platform"
     dji_pilot_api_token: str | None = None
+    dji_pilot_setup_token: str | None = None
     dji_gateway_sn: str | None = None
     dji_gateway_model_domain: str = "2"
     dji_gateway_model_type: str = "119"

@@ -1,17 +1,21 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Header, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from app.core.config import settings
 from app.services.dji_mqtt import dji_mqtt_consumer
+from app.api.dependencies.auth import ALL_ROLES, STREAM_ROLES, AuthenticatedUser, require_roles
+from app.api.v1.routes.auth import verify_csrf
 
 
 router = APIRouter(prefix="/livestreams", tags=["livestream"])
 
 
 @router.get("/options")
-async def livestream_options() -> dict[str, object]:
+async def livestream_options(
+    _: Annotated[AuthenticatedUser, Depends(require_roles(ALL_ROLES))],
+) -> dict[str, object]:
     """List video sources currently advertised by DJI Pilot 2."""
     return {"options": dji_mqtt_consumer.livestream_options()}
 
@@ -27,17 +31,11 @@ class LiveStopRequest(BaseModel):
     video_id: str = Field(min_length=3)
 
 
-def require_platform_token(token: str | None) -> None:
-    if not settings.dji_pilot_api_token or token != settings.dji_pilot_api_token:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")
-
-
-@router.post("/start")
+@router.post("/start", dependencies=[Depends(verify_csrf)])
 async def start_livestream(
     payload: LiveStartRequest,
-    x_auth_token: Annotated[str | None, Header()] = None,
+    _: Annotated[AuthenticatedUser, Depends(require_roles(STREAM_ROLES))],
 ) -> dict[str, object]:
-    require_platform_token(x_auth_token)
     url = f"rtmp://{settings.stream_public_host}:{settings.stream_rtmp_port}/live/{payload.gateway_sn}"
     data = {
         "url_type": 1,
@@ -52,12 +50,11 @@ async def start_livestream(
     return {"status": "sent", "method": "live_start_push", "stream_url": url, "data": data, **published}
 
 
-@router.post("/stop")
+@router.post("/stop", dependencies=[Depends(verify_csrf)])
 async def stop_livestream(
     payload: LiveStopRequest,
-    x_auth_token: Annotated[str | None, Header()] = None,
+    _: Annotated[AuthenticatedUser, Depends(require_roles(STREAM_ROLES))],
 ) -> dict[str, object]:
-    require_platform_token(x_auth_token)
     data = {"video_id": payload.video_id}
     try:
         published = dji_mqtt_consumer.publish_service(payload.gateway_sn, "live_stop_push", data)

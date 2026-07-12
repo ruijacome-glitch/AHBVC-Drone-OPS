@@ -83,3 +83,10 @@ Future phases include media management and a dedicated thermal analysis phase.
 Temperature values must only be extracted from original DJI radiometric thermal
 files or validated thermal metadata; colorized thermal images are not enough for
 reliable temperature readings.
+
+## Documentation
+
+- [Architecture](docs/architecture.md)
+- [DJI Pilot 2 setup](docs/dji-pilot2-setup.md)
+- [Authentication and RBAC](docs/authentication.md)
+- [Implementation phases](docs/phases.md)

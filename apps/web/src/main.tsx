@@ -7,7 +7,12 @@ import {
   CircleDashed,
   Clock3,
   Database,
+  Eye,
+  EyeOff,
   History,
+  LockKeyhole,
+  LogOut,
+  Mail,
   MapPin,
   Moon,
   Play,
@@ -19,6 +24,8 @@ import {
   Square,
   Sun,
   Thermometer,
+  UserRound,
+  Users,
   Video,
   Wifi,
   XCircle,
@@ -34,6 +41,18 @@ const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 
 type Theme = "light" | "dark";
 
+type AuthUser = {
+  id: string;
+  email: string;
+  full_name: string;
+  roles: string[];
+};
+
+type AuthContextValue = {
+  user: AuthUser;
+  logout: () => Promise<void>;
+};
+
 function preferredTheme(): Theme {
   const saved = window.localStorage.getItem("uas:theme");
   if (saved === "light" || saved === "dark") return saved;
@@ -42,6 +61,58 @@ function preferredTheme(): Theme {
 
 const initialTheme = preferredTheme();
 document.documentElement.dataset.theme = initialTheme;
+
+const AuthContext = React.createContext<AuthContextValue | null>(null);
+let refreshPromise: Promise<AuthUser | null> | null = null;
+
+function readCookie(name: string): string | null {
+  const prefix = `${encodeURIComponent(name)}=`;
+  const cookie = document.cookie.split("; ").find((item) => item.startsWith(prefix));
+  return cookie ? decodeURIComponent(cookie.slice(prefix.length)) : null;
+}
+
+function csrfHeaders(): Record<string, string> {
+  const token = readCookie("uas_csrf");
+  return token ? { "x-csrf-token": token } : {};
+}
+
+async function refreshAuthSession(): Promise<AuthUser | null> {
+  if (!refreshPromise) {
+    refreshPromise = fetch(`${apiBaseUrl}/api/v1/auth/refresh`, {
+      method: "POST",
+      credentials: "include",
+      headers: csrfHeaders(),
+    })
+      .then(async (response) => response.ok ? ((await response.json()) as AuthUser) : null)
+      .catch(() => null)
+      .finally(() => { refreshPromise = null; });
+  }
+  return refreshPromise;
+}
+
+async function authenticatedFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  const method = (init.method ?? "GET").toUpperCase();
+  const request = () => {
+    const headers = new Headers(init.headers);
+    if (!["GET", "HEAD", "OPTIONS"].includes(method)) {
+      Object.entries(csrfHeaders()).forEach(([key, value]) => headers.set(key, value));
+    }
+    return fetch(`${apiBaseUrl}${path}`, { ...init, headers, credentials: "include" });
+  };
+  let response = await request();
+  if (response.status === 401) {
+    const refreshed = await refreshAuthSession();
+    if (refreshed) response = await request();
+    else window.dispatchEvent(new Event("uas:session-expired"));
+  }
+  return response;
+}
+
+function useAuth(): AuthContextValue {
+  const value = React.useContext(AuthContext);
+  if (!value) throw new Error("Authentication context unavailable");
+  return value;
+}
 
 type JsBridgeConfig = {
   setup_ready: boolean;
@@ -179,9 +250,13 @@ function parseBridgeData<T>(value: string | undefined): T | undefined {
   }
 }
 
-async function getBackendMqttStatus(): Promise<MqttStatus | null> {
+async function getBackendMqttStatus(pilotApiToken: string | null): Promise<MqttStatus | null> {
+  if (!pilotApiToken) return null;
   try {
-    const response = await fetch(`${apiBaseUrl}/api/v1/dji/mqtt/status`, { cache: "no-store" });
+    const response = await fetch(`${apiBaseUrl}/api/v1/dji/pilot/mqtt-status`, {
+      cache: "no-store",
+      headers: { "x-auth-token": pilotApiToken },
+    });
     if (!response.ok) return null;
     return (await response.json()) as MqttStatus;
   } catch {
@@ -281,11 +356,144 @@ function ThemeToggle({ compact = false }: { compact?: boolean }) {
   );
 }
 
+function AuthProvider({ children }: { children: React.ReactNode }) {
+  const [user, setUser] = React.useState<AuthUser | null>(null);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    let active = true;
+    async function restoreSession() {
+      try {
+        const response = await fetch(`${apiBaseUrl}/api/v1/auth/me`, { credentials: "include" });
+        const restored = response.ok ? ((await response.json()) as AuthUser) : await refreshAuthSession();
+        if (active) setUser(restored);
+      } catch {
+        if (active) setUser(null);
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+    const expire = () => setUser(null);
+    window.addEventListener("uas:session-expired", expire);
+    void restoreSession();
+    return () => {
+      active = false;
+      window.removeEventListener("uas:session-expired", expire);
+    };
+  }, []);
+
+  async function logout() {
+    try {
+      await fetch(`${apiBaseUrl}/api/v1/auth/logout`, {
+        method: "POST",
+        credentials: "include",
+        headers: csrfHeaders(),
+      });
+    } finally {
+      setUser(null);
+    }
+  }
+
+  if (loading) return <AuthLoadingPage />;
+  if (!user) return <LoginPage onAuthenticated={setUser} />;
+  return <AuthContext.Provider value={{ user, logout }}>{children}</AuthContext.Provider>;
+}
+
+function AuthLoadingPage() {
+  return <main className="auth-page"><div className="auth-loading" role="status"><img src="/ahbvc.png" alt="Bombeiros Voluntários de Cascais" /><CircleDashed className="spin" size={24} /><span>A validar sessão segura...</span></div></main>;
+}
+
+function LoginPage({ onAuthenticated }: { onAuthenticated: (user: AuthUser) => void }) {
+  const reduceMotion = useReducedMotion();
+  const [email, setEmail] = React.useState("");
+  const [password, setPassword] = React.useState("");
+  const [showPassword, setShowPassword] = React.useState(false);
+  const [submitting, setSubmitting] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    setSubmitting(true);
+    setError(null);
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/v1/auth/login`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim(), password }),
+      });
+      if (!response.ok) {
+        const result = (await response.json().catch(() => ({}))) as { detail?: string };
+        throw new Error(response.status === 429 ? "Demasiadas tentativas. Aguarde alguns minutos." : result.detail ?? "Não foi possível iniciar sessão.");
+      }
+      onAuthenticated((await response.json()) as AuthUser);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Não foi possível iniciar sessão.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <main className="auth-page">
+      <div className="auth-theme"><ThemeToggle compact /></div>
+      <motion.section className="auth-panel" initial={reduceMotion ? false : { opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.24 }} aria-labelledby="login-title">
+        <header className="auth-brand"><img src="/ahbvc.png" alt="Logótipo dos Bombeiros Voluntários de Cascais" /><div><span>Bombeiros Voluntários de Cascais</span><strong>UAS Platform</strong></div></header>
+        <div className="auth-copy"><p className="eyebrow">Acesso reservado</p><h1 id="login-title">Iniciar sessão</h1><p>Entre com a sua conta operacional para aceder à plataforma.</p></div>
+        <form className="auth-form" onSubmit={submit}>
+          <label htmlFor="login-email">Email institucional</label>
+          <div className="auth-input"><Mail size={18} aria-hidden="true" /><input id="login-email" type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} required /></div>
+          <label htmlFor="login-password">Password</label>
+          <div className="auth-input"><LockKeyhole size={18} aria-hidden="true" /><input id="login-password" type={showPassword ? "text" : "password"} autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required /><button type="button" onClick={() => setShowPassword((visible) => !visible)} aria-label={showPassword ? "Ocultar password" : "Mostrar password"}>{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}</button></div>
+          {error ? <p className="auth-error" role="alert">{error}</p> : null}
+          <button className="primary-action auth-submit" type="submit" disabled={submitting}>{submitting ? <CircleDashed className="spin" size={18} /> : <LockKeyhole size={18} />}{submitting ? "A autenticar..." : "Entrar"}</button>
+        </form>
+        <footer className="auth-footer"><ShieldCheck size={16} aria-hidden="true" /><span>Ligação segura e acesso sujeito a auditoria.</span></footer>
+      </motion.section>
+    </main>
+  );
+}
+
+type NavigationPage = "operations" | "history" | "stream" | "users";
+
+function AppSidebar({ active }: { active: NavigationPage }) {
+  const { user, logout } = useAuth();
+  const isAdmin = user.roles.includes("Administrador");
+  return (
+    <aside className="sidebar" aria-label="Navegação principal">
+      <div className="brand-lockup"><img className="brand-logo" src="/ahbvc.png" alt="AHBVC" /><div><strong>UAS Platform</strong><span>AHBVC Drone OPS</span></div></div>
+      <nav>
+        <a className={`nav-link ${active === "operations" ? "active" : ""}`} href="/">Operações</a>
+        <a className={`nav-link ${active === "history" ? "active" : ""}`} href="/history">Histórico de voo</a>
+        <a className={`nav-link ${active === "stream" ? "active" : ""}`} href="/stream">Livestream</a>
+        {isAdmin ? <a className={`nav-link ${active === "users" ? "active" : ""}`} href="/users">Utilizadores</a> : null}
+        <a className="nav-link" href="https://pilot.uas.ahbvc.org.pt">Pilot 2</a>
+      </nav>
+      <div className="sidebar-footer">
+        <ThemeToggle />
+        <div className="session-user"><UserRound size={18} aria-hidden="true" /><span><strong>{user.full_name}</strong><small>{user.roles.join(" · ")}</small></span><button type="button" onClick={() => void logout()} aria-label="Terminar sessão" title="Terminar sessão"><LogOut size={18} /></button></div>
+      </div>
+    </aside>
+  );
+}
+
+function ProtectedApp() {
+  const { user } = useAuth();
+  const path = window.location.pathname;
+  if (path === "/stream") return <LiveStreamPage />;
+  if (path === "/users") return user.roles.includes("Administrador") ? <UserManagementPage /> : <AccessDeniedPage />;
+  if (path === "/history") return <FlightHistoryPage />;
+  return <OpsDashboard />;
+}
+
+function AccessDeniedPage() {
+  return <main className="app-shell"><AppSidebar active="operations" /><section className="workspace access-denied"><ShieldAlert size={36} /><h1>Acesso não autorizado</h1><p>O seu perfil não tem permissão para abrir esta área.</p><a className="primary-action" href="/">Voltar às operações</a></section></main>;
+}
+
 function App() {
   const mode = useHostMode();
   if (mode === "pilot") return <PilotPage />;
-  if (window.location.pathname === "/stream") return <LiveStreamPage />;
-  return window.location.pathname === "/history" ? <FlightHistoryPage /> : <OpsDashboard />;
+  return <AuthProvider><ProtectedApp /></AuthProvider>;
 }
 
 function OpsDashboard() {
@@ -298,7 +506,7 @@ function OpsDashboard() {
     let active = true;
     const refresh = async () => {
       try {
-        const response = await fetch(`${apiBaseUrl}/api/v1/dashboard/summary`, { cache: "no-store" });
+        const response = await authenticatedFetch("/api/v1/dashboard/summary", { cache: "no-store" });
         if (!response.ok) throw new Error("Dashboard indisponível");
         if (!active) return;
         setSummary((await response.json()) as DashboardSummary);
@@ -342,33 +550,7 @@ function OpsDashboard() {
 
   return (
     <main className="app-shell">
-      <aside className="sidebar" aria-label="Navegacao principal">
-        <div className="brand-lockup">
-          <div className="brand-mark">UAS</div>
-          <div>
-            <strong>UAS Platform</strong>
-            <span>AHBVC Drone OPS</span>
-          </div>
-        </div>
-        <nav>
-          <a className="nav-link active" href="/">
-            Operacoes
-          </a>
-          <a className="nav-link" href="/history">
-            Historico de voo
-          </a>
-          <a className="nav-link" href="/stream">
-            Livestream
-          </a>
-          <a className="nav-link" href="/pilot">
-            Pilot 2
-          </a>
-          <a className="nav-link" href="/docs">
-            Configuracao
-          </a>
-        </nav>
-        <ThemeToggle />
-      </aside>
+      <AppSidebar active="operations" />
 
       <section className="workspace">
         <header className="topbar">
@@ -453,8 +635,8 @@ function FlightHistoryPage() {
 
   React.useEffect(() => {
     Promise.all([
-      fetch(`${apiBaseUrl}/api/v1/dji/mqtt/telemetry/${droneSn}/tracks?limit=20`, { cache: "no-store" }),
-      fetch(`${apiBaseUrl}/api/v1/dji/mqtt/telemetry/${droneSn}/history?limit=500`, { cache: "no-store" }),
+      authenticatedFetch(`/api/v1/dji/mqtt/telemetry/${droneSn}/tracks?limit=20`, { cache: "no-store" }),
+      authenticatedFetch(`/api/v1/dji/mqtt/telemetry/${droneSn}/history?limit=500`, { cache: "no-store" }),
     ])
       .then(async ([tracksResponse, telemetryResponse]) => {
         const history = tracksResponse.ok ? ((await tracksResponse.json()) as HistoricalTrack[]) : [];
@@ -480,19 +662,7 @@ function FlightHistoryPage() {
 
   return (
     <main className="app-shell">
-      <aside className="sidebar" aria-label="Navegacao principal">
-        <div className="brand-lockup">
-          <div className="brand-mark">UAS</div>
-          <div><strong>UAS Platform</strong><span>AHBVC Drone OPS</span></div>
-        </div>
-        <nav>
-          <a className="nav-link" href="/">Operacoes</a>
-          <a className="nav-link active" href="/history">Historico de voo</a>
-          <a className="nav-link" href="/stream">Livestream</a>
-          <a className="nav-link" href="/pilot">Pilot 2</a>
-        </nav>
-        <ThemeToggle />
-      </aside>
+      <AppSidebar active="history" />
       <section className="workspace">
         <header className="topbar">
           <div>
@@ -529,9 +699,10 @@ function FlightHistoryPage() {
 }
 
 function LiveStreamPage() {
+  const { user } = useAuth();
+  const canControl = user.roles.some((role) => ["Administrador", "Operador", "Piloto"].includes(role));
   const [options, setOptions] = React.useState<LivestreamOption[]>([]);
   const [selectedVideoId, setSelectedVideoId] = React.useState("");
-  const [token, setToken] = React.useState<string | null>(null);
   const [quality, setQuality] = React.useState("0");
   const [streaming, setStreaming] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
@@ -544,14 +715,9 @@ function LiveStreamPage() {
 
   const loadOptions = React.useCallback(async () => {
     try {
-      const [configResponse, optionsResponse] = await Promise.all([
-        fetch(`${apiBaseUrl}/api/v1/dji/pilot/jsbridge-config`),
-        fetch(`${apiBaseUrl}/api/v1/livestreams/options`),
-      ]);
-      if (!configResponse.ok || !optionsResponse.ok) throw new Error("Configuração indisponível");
-      const config = (await configResponse.json()) as JsBridgeConfig;
+      const optionsResponse = await authenticatedFetch("/api/v1/livestreams/options", { cache: "no-store" });
+      if (!optionsResponse.ok) throw new Error("Configuração indisponível");
       const result = (await optionsResponse.json()) as { options: LivestreamOption[] };
-      setToken(config.api_token);
       setOptions(result.options);
       setSelectedVideoId((current) => current || result.options[0]?.video_id || "");
       setMessage(result.options.length ? null : "A aguardar as câmaras anunciadas pelo DJI Pilot 2.");
@@ -569,16 +735,16 @@ function LiveStreamPage() {
   }, [loadOptions]);
 
   async function sendCommand(action: "start" | "stop") {
-    if (!selectedOption || !token) {
+    if (!selectedOption) {
       setMessage("A configuração DJI ainda não está pronta.");
       return;
     }
     setSending(true);
     setMessage(null);
     try {
-      const response = await fetch(`${apiBaseUrl}/api/v1/livestreams/${action}`, {
+      const response = await authenticatedFetch(`/api/v1/livestreams/${action}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-auth-token": token },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           gateway_sn: selectedOption.gateway_sn,
           video_id: selectedOption.video_id,
@@ -607,16 +773,7 @@ function LiveStreamPage() {
 
   return (
     <main className="app-shell">
-      <aside className="sidebar" aria-label="Navegacao principal">
-        <div className="brand-lockup"><div className="brand-mark">UAS</div><div><strong>UAS Platform</strong><span>AHBVC Drone OPS</span></div></div>
-        <nav>
-          <a className="nav-link" href="/">Operacoes</a>
-          <a className="nav-link" href="/history">Historico de voo</a>
-          <a className="nav-link active" href="/stream">Livestream</a>
-          <a className="nav-link" href="/pilot">Pilot 2</a>
-        </nav>
-        <ThemeToggle />
-      </aside>
+      <AppSidebar active="stream" />
       <section className="workspace">
         <header className="topbar">
           <div><p className="eyebrow">Media operacional</p><h1>Livestream DJI</h1></div>
@@ -633,12 +790,12 @@ function LiveStreamPage() {
               ))}
               {!loading && options.length === 0 ? <div className="stream-empty"><Video size={24} /><span>Nenhuma câmara anunciada</span></div> : null}
             </div>
-            <label>Qualidade<select value={quality} onChange={(event) => setQuality(event.target.value)}><option value="0">Adaptativa</option><option value="1">Fluida</option><option value="2">SD</option><option value="3">HD</option><option value="4">UHD</option></select></label>
-            <div className="stream-actions"><button className="primary-action" type="submit" disabled={!selectedOption || !token || sending}><Play size={18} />{sending ? "A enviar..." : "Iniciar stream"}</button><button className="secondary-action" type="button" disabled={!selectedOption || sending} onClick={() => void sendCommand("stop")}><Square size={16} />Parar</button></div>
+            {canControl ? <><label>Qualidade<select value={quality} onChange={(event) => setQuality(event.target.value)}><option value="0">Adaptativa</option><option value="1">Fluida</option><option value="2">SD</option><option value="3">HD</option><option value="4">UHD</option></select></label>
+            <div className="stream-actions"><button className="primary-action" type="submit" disabled={!selectedOption || sending}><Play size={18} />{sending ? "A enviar..." : "Iniciar stream"}</button><button className="secondary-action" type="button" disabled={!selectedOption || sending} onClick={() => void sendCommand("stop")}><Square size={16} />Parar</button></div></> : <p className="stream-readonly"><ShieldCheck size={17} />Modo de observação: controlo da transmissão indisponível para este perfil.</p>}
             {message ? <p className="stream-message" role="status">{message}</p> : null}
             {gatewaySn ? <details className="stream-technical"><summary>Detalhes técnicos</summary><span>Gateway: {gatewaySn}</span><span>Video ID: {selectedOption?.video_id}</span><span>WebRTC: <a href={streamUrl} target="_blank" rel="noreferrer">abrir player</a></span><span>HLS: <a href={hlsUrl} target="_blank" rel="noreferrer">abrir playlist</a></span></details> : null}
           </form>
-          <div className="stream-view panel">{streaming && gatewaySn ? <iframe key={streamUrl} title="DJI WebRTC livestream" src={streamUrl} allow="autoplay; fullscreen" /> : <div className="stream-placeholder"><Radio size={40} /><strong>Transmissão parada</strong><span>Escolha uma câmara e inicie o stream.</span></div>}</div>
+          <div className="stream-view panel">{gatewaySn ? <iframe key={streamUrl} title="DJI WebRTC livestream" src={streamUrl} allow="autoplay; fullscreen" /> : <div className="stream-placeholder"><Radio size={40} /><strong>Sem fonte disponível</strong><span>A aguardar uma câmara anunciada pelo Pilot 2.</span></div>}</div>
         </section>
       </section>
     </main>
@@ -849,6 +1006,73 @@ function TelemetryMap({ history, track }: { history: Telemetry[]; track: FlightT
   );
 }
 
+type ManagedUser = AuthUser & { is_active: boolean };
+
+function UserManagementPage() {
+  const [users, setUsers] = React.useState<ManagedUser[]>([]);
+  const [email, setEmail] = React.useState("");
+  const [fullName, setFullName] = React.useState("");
+  const [password, setPassword] = React.useState("");
+  const [roles, setRoles] = React.useState<string[]>(["Observador"]);
+  const [message, setMessage] = React.useState<string | null>(null);
+  const [submitting, setSubmitting] = React.useState(false);
+  const roleOptions = ["Administrador", "Operador", "Piloto", "Observador"];
+
+  const loadUsers = React.useCallback(async () => {
+    const response = await authenticatedFetch("/api/v1/users", { cache: "no-store" });
+    if (response.ok) setUsers((await response.json()) as ManagedUser[]);
+  }, []);
+
+  React.useEffect(() => { void loadUsers(); }, [loadUsers]);
+
+  function toggleRole(role: string) {
+    setRoles((current) => current.includes(role) ? current.filter((item) => item !== role) : [...current, role]);
+  }
+
+  async function createUser(event: React.FormEvent) {
+    event.preventDefault();
+    if (!roles.length) { setMessage("Selecione pelo menos um perfil."); return; }
+    setSubmitting(true); setMessage(null);
+    try {
+      const response = await authenticatedFetch("/api/v1/users", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, full_name: fullName, password, roles }) });
+      const result = (await response.json().catch(() => ({}))) as { detail?: string | Array<{ msg: string }> };
+      if (!response.ok) {
+        const detail = Array.isArray(result.detail) ? result.detail[0]?.msg : result.detail;
+        throw new Error(detail ?? "Não foi possível criar o utilizador.");
+      }
+      setEmail(""); setFullName(""); setPassword(""); setRoles(["Observador"]);
+      setMessage("Utilizador criado com sucesso.");
+      await loadUsers();
+    } catch (reason) {
+      setMessage(reason instanceof Error ? reason.message : "Não foi possível criar o utilizador.");
+    } finally { setSubmitting(false); }
+  }
+
+  return (
+    <main className="app-shell">
+      <AppSidebar active="users" />
+      <section className="workspace">
+        <header className="topbar"><div><p className="eyebrow">Administração</p><h1>Utilizadores e permissões</h1></div><span className="status-pill online">{users.length} contas</span></header>
+        <section className="users-layout">
+          <form className="panel user-form" onSubmit={createUser}>
+            <div className="panel-heading"><UserRound size={20} /><div><h2>Novo utilizador</h2><span>Crie uma conta e atribua os perfis necessários.</span></div></div>
+            <label htmlFor="user-name">Nome completo</label><input id="user-name" value={fullName} onChange={(event) => setFullName(event.target.value)} minLength={2} required />
+            <label htmlFor="user-email">Email institucional</label><input id="user-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} required />
+            <label htmlFor="user-password">Password temporária</label><input id="user-password" type="password" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} minLength={12} required /><small>Mínimo 12 caracteres, com maiúscula, minúscula e número.</small>
+            <fieldset><legend>Perfis</legend><div className="role-options">{roleOptions.map((role) => <label key={role}><input type="checkbox" checked={roles.includes(role)} onChange={() => toggleRole(role)} /><span>{role}</span></label>)}</div></fieldset>
+            {message ? <p className="user-form-message" role="status">{message}</p> : null}
+            <button className="primary-action" type="submit" disabled={submitting}>{submitting ? <CircleDashed className="spin" size={18} /> : <Users size={18} />}{submitting ? "A criar..." : "Criar utilizador"}</button>
+          </form>
+          <section className="panel users-list" aria-label="Utilizadores registados">
+            <div className="panel-heading"><Users size={20} /><div><h2>Contas registadas</h2><span>Perfis atualmente atribuídos</span></div></div>
+            <div className="users-table" role="table">{users.map((item) => <div className="user-row" role="row" key={item.id}><div className="user-avatar" aria-hidden="true">{item.full_name.slice(0, 2).toUpperCase()}</div><div><strong>{item.full_name}</strong><span>{item.email}</span></div><div className="role-badges">{item.roles.map((role) => <span key={role}>{role}</span>)}</div><span className={`service-state ${item.is_active ? "is-online" : "is-offline"}`}><span />{item.is_active ? "Ativo" : "Inativo"}</span></div>)}</div>
+          </section>
+        </section>
+      </section>
+    </main>
+  );
+}
+
 function PilotPage() {
   const reduceMotion = useReducedMotion();
   const [config, setConfig] = React.useState<JsBridgeConfig | null>(null);
@@ -880,7 +1104,19 @@ function PilotPage() {
       console.info("DJI liveshare status", payload);
     };
 
-    fetch(`${apiBaseUrl}/api/v1/dji/pilot/jsbridge-config`)
+    const urlToken = new URLSearchParams(window.location.hash.slice(1)).get("setup_token");
+    if (urlToken) {
+      window.sessionStorage.setItem("uas:pilot-setup-token", urlToken);
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+    const setupToken = urlToken ?? window.sessionStorage.getItem("uas:pilot-setup-token");
+    if (!setupToken) {
+      setError("Token de instalação em falta no URL do Pilot 2.");
+      return;
+    }
+    fetch(`${apiBaseUrl}/api/v1/dji/pilot/jsbridge-config`, {
+      headers: { "x-pilot-setup-token": setupToken },
+    })
       .then((response) => {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         return response.json() as Promise<JsBridgeConfig>;
@@ -1045,7 +1281,7 @@ function PilotPage() {
         );
         const backendDeadline = Date.now() + 10000;
         while (Date.now() < backendDeadline) {
-          const backendStatus = await getBackendMqttStatus();
+          const backendStatus = await getBackendMqttStatus(config.api_token);
           const receivedDeviceMessages = Object.values(backendStatus?.devices ?? {}).some(
             (device) => device.message_count > 0,
           );

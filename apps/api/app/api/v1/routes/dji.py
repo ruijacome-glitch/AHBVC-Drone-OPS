@@ -1,7 +1,11 @@
-from fastapi import APIRouter, HTTPException, status
+import hmac
+from typing import Annotated
+
+from fastapi import APIRouter, Header, HTTPException, status
 from pydantic import BaseModel, Field
 
 from app.core.config import settings
+from app.services.dji_mqtt import dji_mqtt_consumer
 
 router = APIRouter()
 
@@ -64,6 +68,18 @@ class DroneRegistration(BaseModel):
     payload: str | None = None
 
 
+def require_pilot_token(x_auth_token: str | None) -> None:
+    expected = settings.dji_pilot_api_token
+    if not expected or not x_auth_token or not hmac.compare_digest(expected, x_auth_token):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")
+
+
+def require_pilot_setup_token(x_pilot_setup_token: str | None) -> None:
+    expected = settings.dji_pilot_setup_token
+    if not expected or not x_pilot_setup_token or not hmac.compare_digest(expected, x_pilot_setup_token):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Pilot setup authorization required")
+
+
 @router.get("/pilot/bootstrap", response_model=PilotBootstrapResponse)
 async def pilot_bootstrap() -> PilotBootstrapResponse:
     return PilotBootstrapResponse(
@@ -82,13 +98,17 @@ async def pilot_bootstrap() -> PilotBootstrapResponse:
 
 
 @router.get("/pilot/jsbridge-config", response_model=PilotJsBridgeConfigResponse)
-async def pilot_jsbridge_config() -> PilotJsBridgeConfigResponse:
+async def pilot_jsbridge_config(
+    x_pilot_setup_token: Annotated[str | None, Header()] = None,
+) -> PilotJsBridgeConfigResponse:
+    require_pilot_setup_token(x_pilot_setup_token)
     required_values = {
         "DJI_APP_ID": settings.dji_app_id,
         "DJI_APP_KEY": settings.dji_app_key,
         "DJI_APP_BASIC_LICENSE": settings.dji_app_basic_license,
         "DJI_WORKSPACE_ID": settings.dji_workspace_id,
         "DJI_PILOT_API_TOKEN": settings.dji_pilot_api_token,
+        "DJI_PILOT_SETUP_TOKEN": settings.dji_pilot_setup_token,
         "MQTT_PILOT_USERNAME": settings.mqtt_pilot_username,
         "MQTT_PILOT_PASSWORD": settings.mqtt_pilot_password,
     }
@@ -122,6 +142,14 @@ async def pilot_jsbridge_config() -> PilotJsBridgeConfigResponse:
             "Awareness event payloads with the official DJI documentation and real hardware."
         ),
     )
+
+
+@router.get("/pilot/mqtt-status")
+async def pilot_mqtt_status(
+    x_auth_token: Annotated[str | None, Header()] = None,
+) -> dict[str, object]:
+    require_pilot_token(x_auth_token)
+    return dji_mqtt_consumer.snapshot()
 
 
 @router.post("/pilot/auth")
