@@ -61,11 +61,15 @@ type Telemetry = {
   altitude_m: number | null;
   speed_mps: number | null;
   heading_deg: number | null;
+  pitch_deg?: number | null;
+  roll_deg?: number | null;
+  yaw_deg?: number | null;
   battery_percent: number | null;
   gps_status: string | null;
   rtk_status: string | null;
   active_payload: string | null;
   flight_mode: string | null;
+  link_quality?: string | null;
   observed_at: string;
 };
 
@@ -395,18 +399,35 @@ type HistoricalTrack = FlightTrack & {
 function FlightHistoryPage() {
   const [tracks, setTracks] = React.useState<HistoricalTrack[]>([]);
   const [selectedTrack, setSelectedTrack] = React.useState<HistoricalTrack | null>(null);
+  const [telemetry, setTelemetry] = React.useState<Telemetry[]>([]);
   const droneSn = "1581F5BKP256200BF008";
 
   React.useEffect(() => {
-    fetch(`${apiBaseUrl}/api/v1/dji/mqtt/telemetry/${droneSn}/tracks?limit=20`, { cache: "no-store" })
-      .then((response) => (response.ok ? response.json() : []))
-      .then((data) => {
-        const history = data as HistoricalTrack[];
+    Promise.all([
+      fetch(`${apiBaseUrl}/api/v1/dji/mqtt/telemetry/${droneSn}/tracks?limit=20`, { cache: "no-store" }),
+      fetch(`${apiBaseUrl}/api/v1/dji/mqtt/telemetry/${droneSn}/history?limit=500`, { cache: "no-store" }),
+    ])
+      .then(async ([tracksResponse, telemetryResponse]) => {
+        const history = tracksResponse.ok ? ((await tracksResponse.json()) as HistoricalTrack[]) : [];
+        const points = telemetryResponse.ok ? ((await telemetryResponse.json()) as Telemetry[]) : [];
         setTracks(history);
         setSelectedTrack(history[0] ?? null);
+        setTelemetry(points);
       })
-      .catch(() => setTracks([]));
+      .catch(() => {
+        setTracks([]);
+        setTelemetry([]);
+      });
   }, []);
+
+  const selectedTelemetry = selectedTrack
+    ? telemetry.filter((point) => {
+        const time = new Date(point.observed_at).getTime();
+        const start = new Date(selectedTrack.started_at).getTime();
+        const end = selectedTrack.ended_at ? new Date(selectedTrack.ended_at).getTime() : Number.POSITIVE_INFINITY;
+        return time >= start && time <= end;
+      })
+    : [];
 
   return (
     <main className="app-shell">
@@ -450,8 +471,70 @@ function FlightHistoryPage() {
             {selectedTrack ? <TelemetryMap history={[]} track={selectedTrack} /> : <div className="map-empty"><MapPin size={28} /><strong>Selecione um voo</strong></div>}
           </div>
         </section>
+        {selectedTrack ? <TelemetryCharts points={selectedTelemetry} /> : null}
       </section>
     </main>
+  );
+}
+
+type ChartSeries = { label: string; color: string; values: Array<number | null> };
+
+function TelemetryCharts({ points }: { points: Telemetry[] }) {
+  const ordered = points.slice().sort((a, b) => a.observed_at.localeCompare(b.observed_at));
+  const series: ChartSeries[] = [
+    { label: "Altitude (m)", color: "#dc2626", values: ordered.map((point) => point.altitude_m) },
+    { label: "Velocidade (m/s)", color: "#2563eb", values: ordered.map((point) => point.speed_mps) },
+    { label: "Bateria (%)", color: "#15803d", values: ordered.map((point) => point.battery_percent) },
+    { label: "Heading (graus)", color: "#9333ea", values: ordered.map((point) => point.heading_deg) },
+    { label: "Pitch / Roll (graus)", color: "#ea580c", values: ordered.map((point) => {
+      if (point.pitch_deg == null && point.roll_deg == null) return null;
+      return point.pitch_deg ?? point.roll_deg ?? null;
+    }) },
+  ];
+
+  return (
+    <section className="telemetry-history panel" aria-label="Graficos de telemetria">
+      <div className="panel-heading">
+        <Activity aria-hidden="true" size={20} />
+        <div>
+          <h2>Telemetria do voo</h2>
+          <span className="chart-meta">{ordered.length} amostras guardadas</span>
+        </div>
+      </div>
+      {ordered.length === 0 ? (
+        <p className="empty-state">Não existem pontos de telemetria associados a este voo.</p>
+      ) : (
+        <div className="chart-grid">
+          {series.map((item) => <TelemetryChart key={item.label} series={item} />)}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function TelemetryChart({ series }: { series: ChartSeries }) {
+  const valid = series.values.filter((value): value is number => value != null && Number.isFinite(value));
+  if (valid.length === 0) {
+    return <article className="chart-card"><strong>{series.label}</strong><span className="chart-empty">Sem dados</span></article>;
+  }
+  const min = Math.min(...valid);
+  const max = Math.max(...valid);
+  const range = Math.max(max - min, 1);
+  const points = series.values.map((value, index) => {
+    if (value == null) return null;
+    const x = series.values.length === 1 ? 50 : (index / (series.values.length - 1)) * 100;
+    const y = 92 - ((value - min) / range) * 78;
+    return `${x.toFixed(2)},${y.toFixed(2)}`;
+  }).filter(Boolean).join(" ");
+
+  return (
+    <article className="chart-card">
+      <div className="chart-heading"><strong>{series.label}</strong><span>{min.toFixed(1)} - {max.toFixed(1)}</span></div>
+      <svg className="telemetry-chart" viewBox="0 0 100 100" role="img" aria-label={series.label}>
+        <line x1="0" y1="92" x2="100" y2="92" className="chart-axis" />
+        <polyline points={points} style={{ stroke: series.color }} />
+      </svg>
+    </article>
   );
 }
 
