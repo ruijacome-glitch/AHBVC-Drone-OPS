@@ -267,6 +267,14 @@ h1 {
   z-index: 1;
 }
 
+/* MapLibre adds .maplibregl-map to this element and otherwise overrides its size. */
+.map-canvas.maplibregl-map {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
 .route-fallback {
   position: absolute;
   inset: 24px;
