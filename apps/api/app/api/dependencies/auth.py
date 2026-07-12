@@ -12,6 +12,7 @@ from app.db.session import AsyncSessionLocal
 ALL_ROLES = frozenset({"Administrador", "Operador", "Piloto", "Observador"})
 STREAM_ROLES = frozenset({"Administrador", "Operador", "Piloto"})
 ADMIN_ROLES = frozenset({"Administrador"})
+PILOT_ROLES = frozenset({"Administrador", "Piloto"})
 
 
 @dataclass(frozen=True)

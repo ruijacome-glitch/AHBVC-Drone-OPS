@@ -28,7 +28,6 @@ import {
   Users,
   Video,
   Wifi,
-  XCircle,
   ZoomIn,
 } from "lucide-react";
 import { motion, useReducedMotion } from "framer-motion";
@@ -250,13 +249,9 @@ function parseBridgeData<T>(value: string | undefined): T | undefined {
   }
 }
 
-async function getBackendMqttStatus(pilotApiToken: string | null): Promise<MqttStatus | null> {
-  if (!pilotApiToken) return null;
+async function getBackendMqttStatus(): Promise<MqttStatus | null> {
   try {
-    const response = await fetch(`${apiBaseUrl}/api/v1/dji/pilot/mqtt-status`, {
-      cache: "no-store",
-      headers: { "x-auth-token": pilotApiToken },
-    });
+    const response = await authenticatedFetch("/api/v1/dji/pilot/mqtt-status", { cache: "no-store" });
     if (!response.ok) return null;
     return (await response.json()) as MqttStatus;
   } catch {
@@ -477,8 +472,13 @@ function AppSidebar({ active }: { active: NavigationPage }) {
   );
 }
 
-function ProtectedApp() {
+function ProtectedApp({ mode }: { mode: "pilot" | "ops" }) {
   const { user } = useAuth();
+  if (mode === "pilot") {
+    return user.roles.some((role) => role === "Piloto" || role === "Administrador")
+      ? <PilotPage />
+      : <PilotAccessDeniedPage />;
+  }
   const path = window.location.pathname;
   if (path === "/stream") return <LiveStreamPage />;
   if (path === "/users") return user.roles.includes("Administrador") ? <UserManagementPage /> : <AccessDeniedPage />;
@@ -492,8 +492,12 @@ function AccessDeniedPage() {
 
 function App() {
   const mode = useHostMode();
-  if (mode === "pilot") return <PilotPage />;
-  return <AuthProvider><ProtectedApp /></AuthProvider>;
+  return <AuthProvider><ProtectedApp mode={mode} /></AuthProvider>;
+}
+
+function PilotAccessDeniedPage() {
+  const { logout } = useAuth();
+  return <main className="pilot-page"><section className="pilot-card pilot-access-denied"><ShieldAlert size={34} /><h1>Acesso de piloto necessário</h1><p>Esta conta não tem o perfil Piloto atribuído.</p><button className="primary-action" type="button" onClick={() => void logout()}><LogOut size={18} />Terminar sessão</button></section></main>;
 }
 
 function OpsDashboard() {
@@ -1074,15 +1078,16 @@ function UserManagementPage() {
 }
 
 function PilotPage() {
+  const { user, logout } = useAuth();
   const reduceMotion = useReducedMotion();
   const [config, setConfig] = React.useState<JsBridgeConfig | null>(null);
   const [steps, setSteps] = React.useState<SetupStep[]>(setupSteps);
-  const [controllerSn, setControllerSn] = React.useState<string>("--");
-  const [aircraftSn, setAircraftSn] = React.useState<string>("--");
   const [mqttState, setMqttState] = React.useState<"unknown" | "connected" | "disconnected">(
     "unknown",
   );
   const backendMqttConfirmed = React.useRef(false);
+  const setupStarted = React.useRef(false);
+  const [pilotSessionId, setPilotSessionId] = React.useState<string | null>(null);
   const [isConfiguring, setIsConfiguring] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -1104,25 +1109,49 @@ function PilotPage() {
       console.info("DJI liveshare status", payload);
     };
 
-    const urlToken = new URLSearchParams(window.location.hash.slice(1)).get("setup_token");
-    if (urlToken) {
-      window.sessionStorage.setItem("uas:pilot-setup-token", urlToken);
-      window.history.replaceState(null, "", window.location.pathname);
-    }
-    const setupToken = urlToken ?? window.sessionStorage.getItem("uas:pilot-setup-token");
-    if (!setupToken) {
-      setError("Token de instalação em falta no URL do Pilot 2.");
-      return;
-    }
-    fetch(`${apiBaseUrl}/api/v1/dji/pilot/jsbridge-config`, {
-      headers: { "x-pilot-setup-token": setupToken },
-    })
+    authenticatedFetch("/api/v1/dji/pilot/jsbridge-config", { cache: "no-store" })
       .then((response) => {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         return response.json() as Promise<JsBridgeConfig>;
       })
       .then(setConfig)
       .catch((err: Error) => setError(err.message));
+  }, []);
+
+  React.useEffect(() => {
+    if (!config || setupStarted.current) return;
+    setupStarted.current = true;
+    void runPilotSetup();
+  }, [config]);
+
+  React.useEffect(() => {
+    if (!pilotSessionId) return;
+    const timer = window.setInterval(() => {
+      void authenticatedFetch(
+        `/api/v1/dji/pilot/operator-sessions/${pilotSessionId}/heartbeat`,
+        { method: "POST" },
+      );
+    }, 30000);
+    return () => window.clearInterval(timer);
+  }, [pilotSessionId]);
+
+  React.useEffect(() => {
+    let active = true;
+    async function refreshTelemetryState() {
+      const status = await getBackendMqttStatus();
+      if (!active || !status) return;
+      const hasRecentMessage = Object.values(status.devices).some((device) => {
+        if (!device.last_message_at) return false;
+        return Date.now() - new Date(device.last_message_at).getTime() < 20000;
+      });
+      setMqttState(status.connected && hasRecentMessage ? "connected" : "disconnected");
+    }
+    void refreshTelemetryState();
+    const timer = window.setInterval(refreshTelemetryState, 5000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
   }, []);
 
   function setStep(id: string, status: StepStatus, detail: string) {
@@ -1161,6 +1190,24 @@ function PilotPage() {
     }
 
     try {
+      const gatewaySn =
+        parseBridgeData<string>(window.djiBridge?.platformGetRemoteControllerSN?.()) ?? "--";
+      const detectedAircraftSn =
+        parseBridgeData<string>(window.djiBridge?.platformGetAircraftSN?.()) ?? "--";
+      if (gatewaySn !== "--") {
+        const sessionResponse = await authenticatedFetch("/api/v1/dji/pilot/operator-sessions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            controller_sn: gatewaySn,
+            aircraft_sn: detectedAircraftSn === "--" ? null : detectedAircraftSn,
+          }),
+        });
+        if (!sessionResponse.ok) throw new Error("Não foi possível registar o piloto neste comando.");
+        const operatorSession = (await sessionResponse.json()) as { id: string };
+        setPilotSessionId(operatorSession.id);
+      }
+
       setStep("license", "running", "A chamar platformVerifyLicense.");
       const licenseResult = bridgeCall("Licenca", (bridge) => {
         if (!bridge.platformVerifyLicense) {
@@ -1281,7 +1328,7 @@ function PilotPage() {
         );
         const backendDeadline = Date.now() + 10000;
         while (Date.now() < backendDeadline) {
-          const backendStatus = await getBackendMqttStatus(config.api_token);
+          const backendStatus = await getBackendMqttStatus();
           const receivedDeviceMessages = Object.values(backendStatus?.devices ?? {}).some(
             (device) => device.message_count > 0,
           );
@@ -1325,9 +1372,6 @@ function PilotPage() {
       }
       setStep("liveshare", "ok", "Liveshare carregado; a aguardar live_capacity/live_status.");
 
-      const gatewaySn =
-        parseBridgeData<string>(window.djiBridge?.platformGetRemoteControllerSN?.()) ?? "--";
-      setControllerSn(gatewaySn);
       if (gatewaySn !== "--" && config.workspace_id) {
         const bindingResponse = await fetch(
           `${apiBaseUrl}/manage/api/v1/devices/${encodeURIComponent(gatewaySn)}/binding`,
@@ -1380,12 +1424,20 @@ function PilotPage() {
         if (tsaResult.code !== 0) throw new Error(tsaResult.message ?? "Falha no modulo TSA");
         setStep("tsa", "ok", "WebSocket/TSA carregado; a aguardar dados reais do drone.");
       }
-      setAircraftSn(parseBridgeData<string>(window.djiBridge?.platformGetAircraftSN?.()) ?? "--");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro desconhecido na configuracao Pilot.");
     } finally {
       setIsConfiguring(false);
     }
+  }
+
+  async function endPilotSession() {
+    if (pilotSessionId) {
+      await authenticatedFetch(`/api/v1/dji/pilot/operator-sessions/${pilotSessionId}/close`, {
+        method: "POST",
+      }).catch(() => undefined);
+    }
+    await logout();
   }
 
   return (
@@ -1397,97 +1449,21 @@ function PilotPage() {
         animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
         transition={{ duration: 0.22 }}
       >
-        <div className="pilot-card-header"><p className="eyebrow">DJI Pilot 2 Open Platform</p><ThemeToggle compact /></div>
-        <h1 id="pilot-title">UAS Platform</h1>
-        <p className="intro">
-          Portal tecnico para autenticar o JSBridge, definir workspace e iniciar a ligacao Cloud API.
-        </p>
-
-        <div className="pilot-status-grid" aria-live="polite">
-          <StatusTile label="JSBridge" value={window.djiBridge ? "Disponivel" : "Fora do Pilot"} />
-          <StatusTile
-            label="MQTT"
-            value={
-              mqttState === "connected"
-                ? "Ligado"
-                : mqttState === "disconnected"
-                  ? "Desligado"
-                  : "A verificar"
-            }
-          />
-          <StatusTile label="Comando" value={controllerSn} />
-          <StatusTile label="Drone" value={aircraftSn} />
+        <div className="pilot-card-header">
+          <div className="pilot-brand"><img src="/ahbvc.png" alt="AHBVC" /><div><p className="eyebrow">DJI Pilot 2</p><h1 id="pilot-title">UAS Platform</h1></div></div>
+          <div className="pilot-actions"><ThemeToggle compact /><button className="icon-action" type="button" onClick={() => void endPilotSession()} aria-label="Terminar sessão" title="Terminar sessão"><LogOut size={18} /></button></div>
         </div>
+        <p className="pilot-identity"><UserRound size={18} />{user.full_name}<span>{user.roles.join(" · ")}</span></p>
 
-        <div className="config-list" aria-live="polite">
-          {error ? <p className="error-text">API indisponivel: {error}</p> : null}
-          {config ? (
-            <>
-              <ConfigRow label="Workspace" value={config.workspace_id ?? "Por configurar"} />
-              <ConfigRow label="API" value={config.api_host} />
-              <ConfigRow label="MQTT" value={config.mqtt_url} />
-              <ConfigRow label="WebSocket" value={config.ws_host ?? "Pendente"} />
-            </>
-          ) : (
-            <p>A carregar configuracao...</p>
-          )}
+        <div className="pilot-badges" aria-live="polite">
+          <span className={`pilot-badge ${mqttState === "connected" ? "ok" : mqttState === "disconnected" ? "error" : "pending"}`}><Wifi size={20} />{mqttState === "connected" ? "Telemetria a receber" : mqttState === "disconnected" ? "Sem telemetria" : "A ligar telemetria"}</span>
+          <span className={`pilot-badge ${window.djiBridge ? "ok" : "error"}`}><Radio size={20} />{window.djiBridge ? "DJI Pilot ligado" : "DJI Pilot indisponível"}</span>
+          <span className={`pilot-badge ${pilotSessionId ? "ok" : "pending"}`}><UserRound size={20} />{pilotSessionId ? "Piloto registado" : "A registar piloto"}</span>
         </div>
-
-        <div className="step-list">
-          {steps.map((step) => (
-            <SetupStepRow key={step.id} step={step} />
-          ))}
-        </div>
-
-        <button
-          className="primary-action"
-          type="button"
-          disabled={!config || isConfiguring}
-          onClick={runPilotSetup}
-        >
-          {isConfiguring ? "A configurar..." : "Configurar DJI Pilot 2"}
-        </button>
+        {error ? <p className="pilot-warning" role="alert"><ShieldAlert size={18} />{error}</p> : null}
+        {isConfiguring && !error ? <p className="pilot-progress"><CircleDashed className="spin" size={18} />A estabelecer ligação segura...</p> : null}
       </motion.section>
     </main>
-  );
-}
-
-function ConfigRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="config-row">
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
-  );
-}
-
-function StatusTile({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="status-tile">
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
-  );
-}
-
-function SetupStepRow({ step }: { step: SetupStep }) {
-  const Icon =
-    step.status === "ok"
-      ? CheckCircle2
-      : step.status === "error"
-        ? XCircle
-        : step.status === "skipped"
-          ? ShieldAlert
-          : CircleDashed;
-
-  return (
-    <div className={`setup-step ${step.status}`}>
-      <Icon aria-hidden="true" size={20} />
-      <div>
-        <strong>{step.label}</strong>
-        <span>{step.detail}</span>
-      </div>
-    </div>
   );
 }
 

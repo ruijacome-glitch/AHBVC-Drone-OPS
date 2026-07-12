@@ -1,21 +1,35 @@
+from uuid import UUID
+
 from fastapi.testclient import TestClient
 
+from app.api.dependencies.auth import AuthenticatedUser, current_user
 from app.core.config import settings
 from app.main import app
 
 
-def test_pilot_jsbridge_config_reports_missing_configuration() -> None:
-    client = TestClient(app)
-    previous_token = settings.dji_pilot_setup_token
-    settings.dji_pilot_setup_token = "setup-token"
+TEST_PILOT = AuthenticatedUser(
+    id=UUID("00000000-0000-0000-0000-000000000001"),
+    organisation_id=None,
+    email="pilot@example.org",
+    full_name="Test Pilot",
+    roles=frozenset({"Piloto"}),
+)
 
+
+def authenticated_client() -> TestClient:
+    async def override_current_user() -> AuthenticatedUser:
+        return TEST_PILOT
+
+    app.dependency_overrides[current_user] = override_current_user
+    return TestClient(app)
+
+
+def test_pilot_jsbridge_config_reports_missing_configuration() -> None:
+    client = authenticated_client()
     try:
-        response = client.get(
-            "/api/v1/dji/pilot/jsbridge-config",
-            headers={"x-pilot-setup-token": "setup-token"},
-        )
+        response = client.get("/api/v1/dji/pilot/jsbridge-config")
     finally:
-        settings.dji_pilot_setup_token = previous_token
+        app.dependency_overrides.clear()
 
     assert response.status_code == 200
     payload = response.json()
@@ -25,14 +39,13 @@ def test_pilot_jsbridge_config_reports_missing_configuration() -> None:
 
 
 def test_pilot_jsbridge_config_includes_situation_awareness_websocket() -> None:
-    client = TestClient(app)
+    client = authenticated_client()
     previous_values = {
         "dji_app_id": settings.dji_app_id,
         "dji_app_key": settings.dji_app_key,
         "dji_app_basic_license": settings.dji_app_basic_license,
         "dji_workspace_id": settings.dji_workspace_id,
         "dji_pilot_api_token": settings.dji_pilot_api_token,
-        "dji_pilot_setup_token": settings.dji_pilot_setup_token,
         "mqtt_pilot_username": settings.mqtt_pilot_username,
         "mqtt_pilot_password": settings.mqtt_pilot_password,
         "mqtt_public_url": settings.mqtt_public_url,
@@ -43,17 +56,12 @@ def test_pilot_jsbridge_config_includes_situation_awareness_websocket() -> None:
     settings.dji_app_basic_license = "license"
     settings.dji_workspace_id = "162d4348-fe24-49ac-a27e-9ec36bd46a80"
     settings.dji_pilot_api_token = "test-token"
-    settings.dji_pilot_setup_token = "setup-token"
     settings.mqtt_pilot_username = "pilot"
     settings.mqtt_pilot_password = "mqtt-password"
     settings.mqtt_public_url = "tcp://mqtt.uas.ahbvc.org.pt:1883"
 
     try:
-        response = client.get(
-            "/api/v1/dji/pilot/jsbridge-config",
-            headers={"x-pilot-setup-token": "setup-token"},
-        )
-
+        response = client.get("/api/v1/dji/pilot/jsbridge-config")
         assert response.status_code == 200
         payload = response.json()
         assert payload["setup_ready"] is True
@@ -63,16 +71,12 @@ def test_pilot_jsbridge_config_includes_situation_awareness_websocket() -> None:
         )
         assert "x-auth-token" not in payload["ws_host"]
     finally:
+        app.dependency_overrides.clear()
         for key, value in previous_values.items():
             setattr(settings, key, value)
 
 
-def test_pilot_jsbridge_config_requires_setup_token() -> None:
+def test_pilot_jsbridge_config_requires_human_authentication() -> None:
     client = TestClient(app)
-    previous_token = settings.dji_pilot_setup_token
-    settings.dji_pilot_setup_token = "setup-token"
-    try:
-        response = client.get("/api/v1/dji/pilot/jsbridge-config")
-        assert response.status_code == 401
-    finally:
-        settings.dji_pilot_setup_token = previous_token
+    response = client.get("/api/v1/dji/pilot/jsbridge-config")
+    assert response.status_code == 401

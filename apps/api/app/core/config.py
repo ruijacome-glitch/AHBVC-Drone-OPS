@@ -31,7 +31,6 @@ class Settings(BaseSettings):
     dji_workspace_id: str | None = None
     dji_workspace_name: str = "AHBVC UAS Platform"
     dji_pilot_api_token: str | None = None
-    dji_pilot_setup_token: str | None = None
     dji_gateway_sn: str | None = None
     dji_gateway_model_domain: str = "2"
     dji_gateway_model_type: str = "119"

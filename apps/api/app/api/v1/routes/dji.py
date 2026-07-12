@@ -1,10 +1,15 @@
-import hmac
+import json
 from typing import Annotated
+from uuid import UUID
 
-from fastapi import APIRouter, Header, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
+from sqlalchemy import text
 
+from app.api.dependencies.auth import AuthenticatedUser, PILOT_ROLES, require_roles
+from app.api.v1.routes.auth import verify_csrf
 from app.core.config import settings
+from app.db.session import AsyncSessionLocal
 from app.services.dji_mqtt import dji_mqtt_consumer
 
 router = APIRouter()
@@ -50,11 +55,6 @@ class PilotJsBridgeConfigResponse(BaseModel):
     todo: str
 
 
-class PilotAuthRequest(BaseModel):
-    username: str = Field(min_length=1)
-    password: str = Field(min_length=1)
-
-
 class GatewayRegistration(BaseModel):
     gateway_sn: str = Field(min_length=3)
     callsign: str | None = None
@@ -68,16 +68,17 @@ class DroneRegistration(BaseModel):
     payload: str | None = None
 
 
-def require_pilot_token(x_auth_token: str | None) -> None:
-    expected = settings.dji_pilot_api_token
-    if not expected or not x_auth_token or not hmac.compare_digest(expected, x_auth_token):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")
+class PilotSessionRequest(BaseModel):
+    controller_sn: str = Field(min_length=3, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
+    aircraft_sn: str | None = Field(default=None, min_length=3, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
 
 
-def require_pilot_setup_token(x_pilot_setup_token: str | None) -> None:
-    expected = settings.dji_pilot_setup_token
-    if not expected or not x_pilot_setup_token or not hmac.compare_digest(expected, x_pilot_setup_token):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Pilot setup authorization required")
+class PilotSessionResponse(BaseModel):
+    id: UUID
+    pilot_name: str
+    controller_sn: str
+    aircraft_sn: str | None
+    status: str
 
 
 @router.get("/pilot/bootstrap", response_model=PilotBootstrapResponse)
@@ -99,16 +100,14 @@ async def pilot_bootstrap() -> PilotBootstrapResponse:
 
 @router.get("/pilot/jsbridge-config", response_model=PilotJsBridgeConfigResponse)
 async def pilot_jsbridge_config(
-    x_pilot_setup_token: Annotated[str | None, Header()] = None,
+    _: Annotated[AuthenticatedUser, Depends(require_roles(PILOT_ROLES))],
 ) -> PilotJsBridgeConfigResponse:
-    require_pilot_setup_token(x_pilot_setup_token)
     required_values = {
         "DJI_APP_ID": settings.dji_app_id,
         "DJI_APP_KEY": settings.dji_app_key,
         "DJI_APP_BASIC_LICENSE": settings.dji_app_basic_license,
         "DJI_WORKSPACE_ID": settings.dji_workspace_id,
         "DJI_PILOT_API_TOKEN": settings.dji_pilot_api_token,
-        "DJI_PILOT_SETUP_TOKEN": settings.dji_pilot_setup_token,
         "MQTT_PILOT_USERNAME": settings.mqtt_pilot_username,
         "MQTT_PILOT_PASSWORD": settings.mqtt_pilot_password,
     }
@@ -146,22 +145,117 @@ async def pilot_jsbridge_config(
 
 @router.get("/pilot/mqtt-status")
 async def pilot_mqtt_status(
-    x_auth_token: Annotated[str | None, Header()] = None,
+    _: Annotated[AuthenticatedUser, Depends(require_roles(PILOT_ROLES))],
 ) -> dict[str, object]:
-    require_pilot_token(x_auth_token)
     return dji_mqtt_consumer.snapshot()
 
 
-@router.post("/pilot/auth")
-async def pilot_auth(_: PilotAuthRequest) -> dict[str, str]:
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail=(
-            f"{DJI_DOCS_NOTE} Configure DJI Developer Portal credentials first: "
-            "App ID, App Key/App Secret, App Basic License, workspace identifier, "
-            "and Pilot 2 Open Platform URL."
-        ),
-    )
+@router.post(
+    "/pilot/operator-sessions",
+    response_model=PilotSessionResponse,
+    dependencies=[Depends(verify_csrf)],
+)
+async def start_pilot_session(
+    payload: PilotSessionRequest,
+    user: Annotated[AuthenticatedUser, Depends(require_roles(PILOT_ROLES))],
+) -> PilotSessionResponse:
+    async with AsyncSessionLocal() as session, session.begin():
+        await session.execute(
+            text(
+                """
+                UPDATE pilot_sessions
+                SET status = 'closed', disconnected_at = now(), last_seen_at = now()
+                WHERE controller_sn = :controller_sn AND status = 'active'
+                """
+            ),
+            {"controller_sn": payload.controller_sn},
+        )
+        result = await session.execute(
+            text(
+                """
+                INSERT INTO pilot_sessions (
+                    user_id, organisation_id, controller_sn, aircraft_sn
+                ) VALUES (
+                    :user_id, :organisation_id, :controller_sn, :aircraft_sn
+                )
+                RETURNING id, controller_sn, aircraft_sn, status
+                """
+            ),
+            {
+                "user_id": user.id,
+                "organisation_id": user.organisation_id,
+                "controller_sn": payload.controller_sn,
+                "aircraft_sn": payload.aircraft_sn,
+            },
+        )
+        row = result.mappings().one()
+        await session.execute(
+            text(
+                """
+                INSERT INTO audit_logs (
+                    actor_user_id, organisation_id, action, entity_type, entity_id, metadata
+                ) VALUES (
+                    :user_id, :organisation_id, 'pilot.session.start',
+                    'pilot_session', :session_id, CAST(:metadata AS jsonb)
+                )
+                """
+            ),
+            {
+                "user_id": user.id,
+                "organisation_id": user.organisation_id,
+                "session_id": str(row["id"]),
+                "metadata": json.dumps(
+                    {"controller_sn": payload.controller_sn, "aircraft_sn": payload.aircraft_sn}
+                ),
+            },
+        )
+    return PilotSessionResponse(pilot_name=user.full_name, **row)
+
+
+@router.post(
+    "/pilot/operator-sessions/{session_id}/heartbeat",
+    dependencies=[Depends(verify_csrf)],
+)
+async def heartbeat_pilot_session(
+    session_id: UUID,
+    user: Annotated[AuthenticatedUser, Depends(require_roles(PILOT_ROLES))],
+) -> dict[str, str]:
+    async with AsyncSessionLocal() as session, session.begin():
+        result = await session.execute(
+            text(
+                """
+                UPDATE pilot_sessions SET last_seen_at = now()
+                WHERE id = :session_id AND user_id = :user_id AND status = 'active'
+                RETURNING id
+                """
+            ),
+            {"session_id": session_id, "user_id": user.id},
+        )
+        if result.first() is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Active pilot session not found")
+    return {"status": "active"}
+
+
+@router.post(
+    "/pilot/operator-sessions/{session_id}/close",
+    dependencies=[Depends(verify_csrf)],
+)
+async def close_pilot_session(
+    session_id: UUID,
+    user: Annotated[AuthenticatedUser, Depends(require_roles(PILOT_ROLES))],
+) -> dict[str, str]:
+    async with AsyncSessionLocal() as session, session.begin():
+        await session.execute(
+            text(
+                """
+                UPDATE pilot_sessions
+                SET status = 'closed', disconnected_at = now(), last_seen_at = now()
+                WHERE id = :session_id AND user_id = :user_id AND status = 'active'
+                """
+            ),
+            {"session_id": session_id, "user_id": user.id},
+        )
+    return {"status": "closed"}
 
 
 @router.post("/gateways")

@@ -1066,6 +1066,39 @@ h1 {
   padding: 28px;
 }
 
+.pilot-brand,
+.pilot-actions,
+.pilot-identity,
+.pilot-badge,
+.pilot-warning,
+.pilot-progress {
+  display: flex;
+  align-items: center;
+}
+
+.pilot-brand { gap: 12px; }
+.pilot-brand img { width: 52px; height: 52px; object-fit: contain; }
+.pilot-brand h1 { margin: 2px 0 0; font-size: 1.45rem; }
+.pilot-actions { gap: 8px; }
+.pilot-identity { gap: 8px; margin: 22px 0; color: var(--color-foreground); font-weight: 700; }
+.pilot-identity span { margin-left: auto; color: var(--color-muted); font-size: 0.82rem; font-weight: 600; }
+.pilot-badges { display: grid; gap: 10px; }
+.pilot-badge { gap: 10px; min-height: 52px; padding: 12px 14px; border: 1px solid var(--color-border); border-radius: 8px; font-weight: 700; }
+.pilot-badge.ok { border-color: #86efac; background: #f0fdf4; color: #166534; }
+.pilot-badge.pending { border-color: #fde68a; background: #fffbeb; color: #92400e; }
+.pilot-badge.error { border-color: #fecaca; background: #fef2f2; color: #991b1b; }
+.pilot-warning, .pilot-progress { gap: 8px; margin: 16px 0 0; padding: 12px; border-radius: 8px; }
+.pilot-warning { background: #fef2f2; color: #991b1b; }
+.pilot-progress { color: var(--color-muted); }
+.pilot-access-denied { text-align: center; }
+.pilot-access-denied > svg { color: var(--color-primary); }
+.pilot-access-denied .primary-action { margin: 20px auto 0; }
+
+:root[data-theme="dark"] .pilot-badge.ok { border-color: #166534; background: #052e16; color: #bbf7d0; }
+:root[data-theme="dark"] .pilot-badge.pending { border-color: #92400e; background: #451a03; color: #fde68a; }
+:root[data-theme="dark"] .pilot-badge.error,
+:root[data-theme="dark"] .pilot-warning { border-color: #991b1b; background: #450a0a; color: #fecaca; }
+
 .intro {
   max-width: 52ch;
   color: #475569;

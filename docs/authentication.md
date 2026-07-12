@@ -11,7 +11,9 @@ Human access to `uas.ahbvc.org.pt` uses server-side sessions backed by:
 - Redis login rate limiting.
 - Database-backed role checks on every protected request.
 
-Tokens used by DJI Pilot 2 are separate from human sessions.
+DJI Pilot 2 opens the same institutional login. After a pilot authenticates, the
+server authorizes the technical DJI configuration and records the operator,
+controller and aircraft in a pilot session. No token is entered in the controller URL.
 
 ## Role matrix
 
@@ -23,6 +25,7 @@ Tokens used by DJI Pilot 2 are separate from human sessions.
 | Start or stop livestream | Yes | Yes | Yes | No |
 | Manage users | Yes | No | No | No |
 | System configuration | Yes | No | No | No |
+| Use DJI Pilot 2 | Yes | No | Yes | No |
 
 ## Production activation
 
@@ -32,16 +35,10 @@ Apply the authentication migration before starting the new API image:
 docker compose exec -T postgres sh -c \
   'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' \
   < database/migrations/002_auth_sessions.sql
-```
 
-Generate and add a separate DJI Pilot setup token to `.env`:
-
-```bash
-openssl rand -hex 32
-```
-
-```dotenv
-DJI_PILOT_SETUP_TOKEN=<generated-value>
+docker compose exec -T postgres sh -c \
+  'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' \
+  < database/migrations/003_pilot_sessions.sql
 ```
 
 Create the initial administrator after rebuilding the API. The password is requested interactively and is not added to shell history:
@@ -52,10 +49,11 @@ docker compose exec api python -m app.cli.create_admin \
   --full-name "Nome do Administrador"
 ```
 
-The DJI Pilot 2 Open Platform URL must then include the setup token:
+Create each pilot in the administration page with the `Piloto` role. The DJI
+Pilot 2 Open Platform URL is clean and contains no credentials:
 
 ```text
-https://pilot.uas.ahbvc.org.pt/#setup_token=<DJI_PILOT_SETUP_TOKEN>
+https://pilot.uas.ahbvc.org.pt
 ```
 
 ## Credential rotation
@@ -64,8 +62,8 @@ Before production use, rotate the following values because earlier development v
 
 - `DJI_PILOT_API_TOKEN`
 - `MQTT_PILOT_PASSWORD`
-- `DJI_PILOT_SETUP_TOKEN`
 
 After changing the MQTT password, render the EMQX bootstrap file and recreate EMQX according to `docs/dji-pilot2-setup.md`.
 
-The setup token is placed in the URL fragment (`#`) so it is not sent in HTTP requests or Traefik access logs. The Pilot page removes it from the visible URL after storing it for the current browser session.
+The technical DJI and MQTT credentials remain server-side configuration and are
+returned only to an authenticated `Piloto` or `Administrador` session.
