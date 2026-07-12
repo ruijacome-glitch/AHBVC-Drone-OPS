@@ -154,6 +154,249 @@ h1 {
   color: #1d4ed8;
 }
 
+.dashboard-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.dashboard-metric {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  min-height: 136px;
+  align-content: start;
+  gap: 5px 12px;
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-soft);
+}
+
+.dashboard-metric-icon {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  grid-row: 1 / span 3;
+  place-items: center;
+  border-radius: 8px;
+  background: #fff1f2;
+  color: var(--color-primary);
+}
+
+.dashboard-metric > span,
+.dashboard-metric > small {
+  color: var(--color-muted);
+}
+
+.dashboard-metric > span {
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.dashboard-metric > strong {
+  font-family: "Fira Code", monospace;
+  font-size: 1.6rem;
+  line-height: 1.1;
+}
+
+.dashboard-metric > small {
+  font-size: 0.76rem;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(340px, 0.9fr);
+  gap: 16px;
+}
+
+.dashboard-services,
+.dashboard-activity {
+  min-height: 390px;
+}
+
+.service-list,
+.activity-list {
+  display: grid;
+  margin-top: 12px;
+}
+
+.service-row {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  min-height: 72px;
+  align-items: center;
+  gap: 12px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.service-icon {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #334155;
+}
+
+.service-row > div:nth-child(2),
+.activity-row > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.service-row > div span,
+.activity-row > div span,
+.activity-row time,
+.dashboard-empty span,
+.panel-heading span {
+  color: var(--color-muted);
+  font-size: 0.8rem;
+}
+
+.service-state {
+  display: inline-flex;
+  min-height: 30px;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.service-state > span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.service-state.is-online {
+  background: #f0fdf4;
+  color: #166534;
+}
+
+.service-state.is-offline {
+  background: #fff1f2;
+  color: #be123c;
+}
+
+.activity-row {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+  min-height: 64px;
+  align-items: center;
+  gap: 12px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.activity-marker {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #64748b;
+}
+
+.activity-marker.occurrence { background: var(--color-primary); }
+.activity-marker.flight { background: var(--color-accent); }
+.activity-marker.stream { background: var(--color-ok); }
+
+.activity-row time {
+  font-family: "Fira Code", monospace;
+  white-space: nowrap;
+}
+
+.dashboard-empty {
+  display: grid;
+  min-height: 260px;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+  color: var(--color-muted);
+  text-align: center;
+}
+
+.dashboard-actions {
+  margin-top: 24px;
+}
+
+.section-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.section-heading h2 {
+  margin-bottom: 0;
+  font-size: 1.1rem;
+}
+
+.quick-action-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.quick-action {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) 18px;
+  min-height: 86px;
+  align-items: center;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--color-foreground);
+  text-decoration: none;
+  transition: border-color 180ms ease, background 180ms ease;
+}
+
+.quick-action:hover,
+.quick-action:focus-visible {
+  border-color: #fca5a5;
+  background: #fffafa;
+  outline: none;
+}
+
+.quick-action > svg:first-child {
+  color: var(--color-primary);
+}
+
+.quick-action > svg:last-child {
+  color: #94a3b8;
+}
+
+.quick-action > span {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.quick-action small {
+  color: var(--color-muted);
+  line-height: 1.25;
+}
+
+.dashboard-warning {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 10px 12px;
+  border: 1px solid #fed7aa;
+  border-radius: 8px;
+  background: #fff7ed;
+  color: #9a3412;
+  font-weight: 600;
+}
+
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -867,8 +1110,14 @@ h1 {
   .history-layout,
   .chart-grid,
   .telemetry-facts,
-  .stream-layout {
+  .stream-layout,
+  .dashboard-grid {
     grid-template-columns: 1fr;
+  }
+
+  .dashboard-metrics,
+  .quick-action-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .topbar,
@@ -884,5 +1133,39 @@ h1 {
 
   h1 {
     font-size: 1.6rem;
+  }
+}
+
+@media (max-width: 560px) {
+  .workspace {
+    padding: 20px 16px;
+  }
+
+  .dashboard-metrics,
+  .quick-action-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-metric {
+    min-height: 112px;
+  }
+
+  .service-row {
+    grid-template-columns: 40px minmax(0, 1fr);
+    padding: 10px 0;
+  }
+
+  .service-state {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .activity-row {
+    grid-template-columns: 10px minmax(0, 1fr);
+    padding: 10px 0;
+  }
+
+  .activity-row time {
+    grid-column: 2;
   }
 }

@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.v1.routes import dji, fleet, livestream, system
+from app.api.v1.routes import dashboard, dji, fleet, livestream, system
 from app.api.v1.routes import map as map_routes
 
 api_router = APIRouter()
@@ -9,3 +9,4 @@ api_router.include_router(dji.router, prefix="/dji", tags=["dji-cloud-api"])
 api_router.include_router(fleet.router, prefix="/fleet", tags=["fleet"])
 api_router.include_router(map_routes.router)
 api_router.include_router(livestream.router)
+api_router.include_router(dashboard.router)

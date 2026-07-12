@@ -2,13 +2,17 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import {
   Activity,
-  Battery,
+  ArrowRight,
   CheckCircle2,
   CircleDashed,
+  Clock3,
+  Database,
+  History,
   MapPin,
   Play,
   Radio,
   RefreshCw,
+  Server,
   ShieldAlert,
   ShieldCheck,
   Square,
@@ -56,6 +60,24 @@ type BridgeResult = {
 type MqttStatus = {
   connected: boolean;
   devices: Record<string, { message_count: number; last_message_at?: string | null }>;
+};
+
+type DashboardSummary = {
+  counters: {
+    active_occurrences: number;
+    active_missions: number;
+    flights_today: number;
+    total_flights: number;
+    active_streams: number;
+  };
+  services: { api: boolean; database: boolean; mqtt: boolean };
+  activity: Array<{
+    activity_type: "occurrence" | "flight" | "stream";
+    title: string;
+    detail: string;
+    occurred_at: string;
+  }>;
+  generated_at: string;
 };
 
 type LivestreamOption = {
@@ -217,13 +239,6 @@ const setupSteps: SetupStep[] = [
   },
 ];
 
-const metrics = [
-  { label: "Drones simultaneos", value: "0 / 2", icon: Radio },
-  { label: "Gateway DJI", value: "Offline", icon: Wifi },
-  { label: "Bateria media", value: "--", icon: Battery },
-  { label: "Ocorrencia ativa", value: "Nenhuma", icon: Activity },
-];
-
 function useHostMode() {
   return window.location.hostname.startsWith("pilot.") ? "pilot" : "ops";
 }
@@ -237,79 +252,54 @@ function App() {
 
 function OpsDashboard() {
   const reduceMotion = useReducedMotion();
-  const [telemetry, setTelemetry] = React.useState<Telemetry | null>(() => {
-    try {
-      const cached = window.localStorage.getItem("uas:last-telemetry");
-      return cached ? (JSON.parse(cached) as Telemetry) : null;
-    } catch {
-      return null;
-    }
-  });
-  const [history, setHistory] = React.useState<Telemetry[]>([]);
-  const [track, setTrack] = React.useState<FlightTrack | null>(null);
-  const [mqttStatus, setMqttStatus] = React.useState<MqttStatus | null>(null);
+  const [summary, setSummary] = React.useState<DashboardSummary | null>(null);
   const [statusLoading, setStatusLoading] = React.useState(true);
-  const droneSn = "1581F5BKP256200BF008";
+  const [refreshError, setRefreshError] = React.useState(false);
 
   React.useEffect(() => {
     let active = true;
     const refresh = async () => {
       try {
-        const [latestResponse, historyResponse, trackResponse, mqttResponse] = await Promise.all([
-          fetch(`${apiBaseUrl}/api/v1/dji/mqtt/telemetry/${droneSn}/latest`, { cache: "no-store" }),
-          fetch(`${apiBaseUrl}/api/v1/dji/mqtt/telemetry/${droneSn}/history?limit=200`, {
-            cache: "no-store",
-          }),
-          fetch(`${apiBaseUrl}/api/v1/dji/mqtt/telemetry/${droneSn}/track`, { cache: "no-store" }),
-          fetch(`${apiBaseUrl}/api/v1/dji/mqtt/status`, { cache: "no-store" }),
-        ]);
+        const response = await fetch(`${apiBaseUrl}/api/v1/dashboard/summary`, { cache: "no-store" });
+        if (!response.ok) throw new Error("Dashboard indisponível");
         if (!active) return;
-        if (latestResponse.ok) {
-          const latest = (await latestResponse.json()) as Telemetry;
-          setTelemetry(latest);
-          window.localStorage.setItem("uas:last-telemetry", JSON.stringify(latest));
-        }
-        setHistory(historyResponse.ok ? ((await historyResponse.json()) as Telemetry[]) : []);
-        setTrack(trackResponse.ok ? ((await trackResponse.json()) as FlightTrack) : null);
-        setMqttStatus(mqttResponse.ok ? ((await mqttResponse.json()) as MqttStatus) : null);
+        setSummary((await response.json()) as DashboardSummary);
+        setRefreshError(false);
       } catch {
-        if (active) setMqttStatus(null);
+        if (active) setRefreshError(true);
       } finally {
         if (active) setStatusLoading(false);
       }
     };
     void refresh();
-    const timer = window.setInterval(refresh, 3000);
+    const timer = window.setInterval(refresh, 10000);
     return () => {
       active = false;
       window.clearInterval(timer);
     };
   }, []);
 
-  const telemetryFresh = telemetry
-    ? Date.now() - new Date(telemetry.observed_at).getTime() < 15000
-    : false;
-  const online = telemetryFresh && (mqttStatus?.connected ?? true);
-  const gatewayLastMessage = mqttStatus?.devices["4LFCM3M006Q6DR"]?.last_message_at;
-  const gatewayOnline = Boolean(
-    mqttStatus?.connected &&
-      gatewayLastMessage &&
-      Date.now() - new Date(gatewayLastMessage).getTime() < 15000,
-  );
-  const gatewayLabel = statusLoading ? "A verificar" : gatewayOnline ? "Online" : "Offline";
+  const servicesOnline = summary
+    ? Object.values(summary.services).filter(Boolean).length
+    : 0;
+  const platformOnline = servicesOnline === 3 && !refreshError;
   const metrics = [
-    { label: "Drones simultaneos", value: telemetry ? "1 / 2" : "0 / 2", icon: Radio },
-    { label: "Gateway DJI", value: gatewayLabel, icon: Wifi },
-    {
-      label: "Bateria M30T",
-      value: telemetry?.battery_percent == null ? "--" : `${Math.round(telemetry.battery_percent)}%`,
-      icon: Battery,
-    },
-    {
-      label: "Altitude",
-      value: telemetry?.altitude_m == null ? "--" : `${telemetry.altitude_m.toFixed(1)} m`,
-      icon: Activity,
-    },
+    { label: "Ocorrências ativas", value: summary?.counters.active_occurrences ?? 0, detail: "Resposta operacional", icon: ShieldAlert },
+    { label: "Missões em curso", value: summary?.counters.active_missions ?? 0, detail: "Operações associadas", icon: Activity },
+    { label: "Voos hoje", value: summary?.counters.flights_today ?? 0, detail: "Desde as 00:00 UTC", icon: Radio },
+    { label: "Voos registados", value: summary?.counters.total_flights ?? 0, detail: "Histórico da plataforma", icon: History },
+  ];
+  const services = [
+    { label: "API operacional", description: "FastAPI e endpoints públicos", online: summary?.services.api, icon: Server },
+    { label: "Base de dados", description: "PostgreSQL e PostGIS", online: summary?.services.database, icon: Database },
+    { label: "Mensageria", description: "Ligação interna ao EMQX", online: summary?.services.mqtt, icon: Wifi },
+    { label: "Livestreams", description: summary?.counters.active_streams ? `${summary.counters.active_streams} transmissão ativa` : "Sem transmissão ativa", online: true, icon: Video },
+  ];
+  const quickActions = [
+    { label: "Abrir livestream", detail: "Iniciar ou acompanhar vídeo", href: "/stream", icon: Video },
+    { label: "Consultar voos", detail: "Rotas e telemetria histórica", href: "/history", icon: History },
+    { label: "Configurar Pilot 2", detail: "Portal DJI Cloud Services", href: "/pilot", icon: Radio },
+    { label: "Documentação", detail: "Estado e configuração técnica", href: "/docs", icon: ShieldCheck },
   ];
 
   return (
@@ -344,74 +334,68 @@ function OpsDashboard() {
       <section className="workspace">
         <header className="topbar">
           <div>
-            <p className="eyebrow">Bombeiros Voluntarios de Cascais</p>
-            <h1>Consola inicial de operacoes UAS</h1>
+            <p className="eyebrow">Bombeiros Voluntários de Cascais</p>
+            <h1>Centro de operações UAS</h1>
           </div>
-          <span className={`status-pill ${statusLoading ? "checking" : online ? "online" : "offline"}`}>
-            {statusLoading ? "A verificar telemetria" : online ? "Telemetria online" : "Sem telemetria"}
+          <span className={`status-pill ${statusLoading ? "checking" : platformOnline ? "online" : "offline"}`} aria-live="polite">
+            {statusLoading ? "A verificar plataforma" : platformOnline ? "Plataforma operacional" : "Atenção necessária"}
           </span>
         </header>
 
         <motion.section
-          className="metric-grid"
+          className="dashboard-metrics"
           initial={reduceMotion ? false : { opacity: 0, y: 12 }}
           animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
           transition={{ duration: 0.22 }}
+          aria-label="Resumo operacional"
         >
-          {metrics.map((metric) => (
-            <article className="metric-card" key={metric.label}>
-              <metric.icon aria-hidden="true" size={20} />
-              <span>{metric.label}</span>
-              <strong>{metric.value}</strong>
-            </article>
+          {metrics.map((metric, index) => (
+            <motion.article className="dashboard-metric" key={metric.label} initial={reduceMotion ? false : { opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.04 }}>
+              <div className="dashboard-metric-icon"><metric.icon aria-hidden="true" size={20} /></div>
+              <span>{metric.label}</span><strong>{statusLoading ? "—" : metric.value}</strong><small>{metric.detail}</small>
+            </motion.article>
           ))}
         </motion.section>
 
-        <section className="ops-grid">
-          <article className="map-panel" aria-label="Mapa operacional">
-            <TelemetryMap history={history} track={track} />
-            <div className="map-footer">
-              <strong>Mapa em tempo real</strong>
-              <span>
-                {telemetry?.latitude && telemetry.longitude
-                  ? `M30T ${telemetry.latitude.toFixed(5)}, ${telemetry.longitude.toFixed(5)}`
-                  : "Sem posição GPS válida; o drone está a enviar 0,0 neste teste."}
-              </span>
+        <section className="dashboard-grid">
+          <article className="panel dashboard-services">
+            <div className="panel-heading"><ShieldCheck aria-hidden="true" size={20} /><div><h2>Estado da plataforma</h2><span>{servicesOnline} de 3 serviços essenciais disponíveis</span></div></div>
+            <div className="service-list">
+              {services.map((service) => (
+                <div className="service-row" key={service.label}>
+                  <div className="service-icon"><service.icon size={19} aria-hidden="true" /></div>
+                  <div><strong>{service.label}</strong><span>{service.description}</span></div>
+                  <span className={`service-state ${service.online ? "is-online" : "is-offline"}`}><span aria-hidden="true" />{service.online ? "Disponível" : "Indisponível"}</span>
+                </div>
+              ))}
             </div>
           </article>
 
-          <article className="panel">
-            <div className="panel-heading">
-              <ShieldCheck aria-hidden="true" size={20} />
-              <h2>Gateways e drones</h2>
+          <article className="panel dashboard-activity">
+            <div className="panel-heading"><Clock3 aria-hidden="true" size={20} /><div><h2>Atividade recente</h2><span>Eventos operacionais agregados</span></div></div>
+            <div className="activity-list">
+              {summary?.activity.length ? summary.activity.map((item) => (
+                <div className="activity-row" key={`${item.activity_type}-${item.occurred_at}`}>
+                  <span className={`activity-marker ${item.activity_type}`} aria-hidden="true" />
+                  <div><strong>{item.title}</strong><span>{item.detail}</span></div>
+                  <time dateTime={item.occurred_at}>{new Date(item.occurred_at).toLocaleString("pt-PT", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</time>
+                </div>
+              )) : <div className="dashboard-empty"><Clock3 size={24} /><strong>Sem atividade registada</strong><span>Os próximos eventos operacionais aparecerão aqui.</span></div>}
             </div>
-            <dl className="definition-list">
-              <div>
-                <dt>DJI Matrice 30T</dt>
-                <dd>{online ? "Online / telemetria recebida" : "A aguardar telemetria"}</dd>
-              </div>
-              <div>
-                <dt>DJI Matrice 4T</dt>
-                <dd>A aguardar registo via Pilot 2</dd>
-              </div>
-              <div>
-                <dt>MQTT</dt>
-                <dd>{mqttStatus?.connected ? "Ligado ao EMQX" : "A aguardar ligação"}</dd>
-              </div>
-              <div>
-                <dt>Heading / velocidade</dt>
-                <dd>
-                  {telemetry?.heading_deg == null ? "--" : `${telemetry.heading_deg.toFixed(1)}°`}
-                  {telemetry?.speed_mps == null ? " / --" : ` / ${telemetry.speed_mps.toFixed(1)} m/s`}
-                </dd>
-              </div>
-              <div>
-                <dt>Payload térmico</dt>
-                <dd>{telemetry?.active_payload ?? "--"}</dd>
-              </div>
-            </dl>
           </article>
         </section>
+
+        <section className="dashboard-actions" aria-labelledby="quick-actions-title">
+          <div className="section-heading"><div><p className="eyebrow">Acesso direto</p><h2 id="quick-actions-title">Ferramentas operacionais</h2></div></div>
+          <div className="quick-action-grid">
+            {quickActions.map((action) => (
+              <motion.a className="quick-action" href={action.href} key={action.href} whileTap={{ scale: 0.985 }}>
+                <action.icon size={21} aria-hidden="true" /><span><strong>{action.label}</strong><small>{action.detail}</small></span><ArrowRight size={18} aria-hidden="true" />
+              </motion.a>
+            ))}
+          </div>
+        </section>
+        {refreshError ? <div className="dashboard-warning" role="status"><ShieldAlert size={18} /><span>Não foi possível atualizar o resumo. A apresentar a última informação disponível.</span></div> : null}
       </section>
     </main>
   );
