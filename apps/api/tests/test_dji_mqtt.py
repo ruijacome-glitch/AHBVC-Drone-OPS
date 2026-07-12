@@ -1,3 +1,4 @@
+import asyncio
 import json
 from types import SimpleNamespace
 
@@ -131,3 +132,36 @@ def test_mqtt_consumer_registers_subdevice_from_update_topo() -> None:
     assert aircraft["online_status"] is True
     assert aircraft["model"] == {"domain": "0", "type": "67", "sub_type": "1"}
     assert "device_secret" not in str(aircraft)
+
+
+def test_telemetry_insert_is_scheduled_on_api_event_loop(monkeypatch) -> None:
+    consumer = DjiMqttConsumer()
+    class _ApiLoop:
+        @staticmethod
+        def is_closed() -> bool:
+            return False
+
+    api_loop = _ApiLoop()
+    consumer._async_loop = api_loop  # type: ignore[assignment]  # noqa: SLF001
+    scheduled: dict[str, object] = {}
+
+    class _ScheduledFuture:
+        def add_done_callback(self, callback) -> None:
+            scheduled["callback"] = callback
+
+    def fake_run_coroutine_threadsafe(coroutine, loop):
+        scheduled["loop"] = loop
+        coroutine.close()
+        return _ScheduledFuture()
+
+    monkeypatch.setattr(asyncio, "run_coroutine_threadsafe", fake_run_coroutine_threadsafe)
+
+    consumer._schedule_telemetry_insert(  # noqa: SLF001
+        SimpleNamespace(),
+        "thing/product/aircraft-123/osd",
+        {"data": {}},
+        "aircraft-123",
+    )
+
+    assert scheduled["loop"] is api_loop
+    assert "callback" in scheduled

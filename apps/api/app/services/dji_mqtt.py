@@ -4,6 +4,7 @@ import json
 import logging
 import asyncio
 import threading
+from concurrent.futures import Future
 from uuid import uuid4
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -59,11 +60,18 @@ class DjiMqttConsumer:
         self._lock = threading.RLock()
         self._state = DjiMqttState()
         self._client: mqtt.Client | None = None
+        self._async_loop: asyncio.AbstractEventLoop | None = None
 
     def start(self) -> None:
         if not settings.mqtt_pilot_username or not settings.mqtt_pilot_password:
             logger.warning("DJI MQTT consumer disabled: credentials are not configured")
             return
+
+        try:
+            self._async_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            self._async_loop = None
+            logger.error("DJI MQTT consumer started without an application event loop")
 
         self._client = mqtt.Client(
             callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
@@ -87,6 +95,7 @@ class DjiMqttConsumer:
             return
         client.loop_stop()
         client.disconnect()
+        self._async_loop = None
         with self._lock:
             self._state.connected = False
 
@@ -235,8 +244,31 @@ class DjiMqttConsumer:
             if model_data and model_data.model:
                 model = "-".join(model_data.model.get(key, "") for key in ("domain", "type", "sub_type"))
         telemetry = normalize_osd(device_sn, gateway_sn, payload, model)
+        self._schedule_telemetry_insert(telemetry, topic, payload, device_sn)
+
+    def _schedule_telemetry_insert(
+        self,
+        telemetry: Any,
+        topic: str,
+        payload: dict[str, Any],
+        device_sn: str,
+    ) -> None:
+        loop = self._async_loop
+        if loop is None or loop.is_closed():
+            logger.warning("Skipping DJI telemetry persistence: application event loop unavailable")
+            return
+        future = asyncio.run_coroutine_threadsafe(
+            self._insert_telemetry(telemetry, topic, payload),
+            loop,
+        )
+        future.add_done_callback(
+            lambda completed: self._log_telemetry_insert_result(completed, device_sn)
+        )
+
+    @staticmethod
+    def _log_telemetry_insert_result(future: Future[None], device_sn: str) -> None:
         try:
-            asyncio.run(self._insert_telemetry(telemetry, topic, payload))
+            future.result()
         except Exception:
             logger.exception("Unable to persist DJI OSD telemetry for %s", device_sn)
 
