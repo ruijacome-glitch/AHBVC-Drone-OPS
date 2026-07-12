@@ -13,6 +13,9 @@ from app.core.security import (
     hash_refresh_token,
     new_refresh_token,
     verify_password,
+    hash_invitation_token,
+    new_invitation_token,
+    validate_password_strength,
 )
 from app.main import app
 
@@ -22,6 +25,19 @@ def test_password_hash_is_not_reversible_plaintext() -> None:
     assert password_hash != "StrongPassword123"
     assert verify_password("StrongPassword123", password_hash) is True
     assert verify_password("WrongPassword123", password_hash) is False
+
+
+def test_invitation_token_is_random_and_stored_as_hash() -> None:
+    raw_token, token_hash = new_invitation_token()
+    assert len(raw_token) >= 64
+    assert raw_token != token_hash
+    assert hash_invitation_token(raw_token) == token_hash
+
+
+def test_invitation_password_policy() -> None:
+    assert validate_password_strength("StrongPassword123") == "StrongPassword123"
+    with pytest.raises(ValueError):
+        validate_password_strength("weak")
 
 
 def test_access_token_round_trip() -> None:

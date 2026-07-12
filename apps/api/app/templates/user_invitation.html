@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="pt">
+<body style="margin:0;background:#f3f5f8;color:#172033;font-family:Arial,sans-serif">
+  <div style="max-width:600px;margin:0 auto;padding:32px 18px">
+    <div style="background:#ffffff;border:1px solid #d9dee7;border-top:4px solid #c8102e;padding:28px">
+      <p style="margin:0;color:#687386;font-size:12px;text-transform:uppercase">Bombeiros Voluntários de Cascais</p>
+      <h1 style="margin:8px 0 20px;font-size:24px">A sua conta UAS Platform foi criada</h1>
+      <p>Olá {{ full_name }},</p>
+      <p>Foi criada uma conta operacional para <strong>{{ email }}</strong> com os perfis {{ roles }}.</p>
+      <p>Defina a sua password através do botão abaixo. O convite é válido durante {{ expiry_hours }} horas e só pode ser utilizado uma vez.</p>
+      <p style="margin:26px 0"><a href="{{ activation_url }}" style="display:inline-block;background:#c8102e;color:#ffffff;text-decoration:none;padding:13px 18px;border-radius:6px;font-weight:bold">Definir password</a></p>
+      <p style="color:#687386;font-size:13px">Se não reconhece este convite, contacte o administrador da plataforma.</p>
+    </div>
+  </div>
+</body>
+</html>

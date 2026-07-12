@@ -60,5 +60,26 @@ def hash_refresh_token(raw_token: str) -> str:
     return sha256(raw_token.encode("utf-8")).hexdigest()
 
 
+def new_invitation_token() -> tuple[str, str]:
+    raw_token = token_urlsafe(64)
+    return raw_token, sha256(raw_token.encode("utf-8")).hexdigest()
+
+
+def hash_invitation_token(raw_token: str) -> str:
+    return sha256(raw_token.encode("utf-8")).hexdigest()
+
+
+def validate_password_strength(password: str) -> str:
+    if len(password) < 12:
+        raise ValueError("Password must contain at least 12 characters")
+    if not any(char.islower() for char in password):
+        raise ValueError("Password must include a lowercase letter")
+    if not any(char.isupper() for char in password):
+        raise ValueError("Password must include an uppercase letter")
+    if not any(char.isdigit() for char in password):
+        raise ValueError("Password must include a number")
+    return password
+
+
 def new_csrf_token() -> str:
     return token_urlsafe(32)

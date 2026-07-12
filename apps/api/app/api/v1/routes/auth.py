@@ -7,7 +7,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Request, Response, status
 from fastapi.concurrency import run_in_threadpool
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, model_validator
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
 from sqlalchemy import text
@@ -17,9 +17,12 @@ from app.core.config import settings
 from app.core.security import (
     create_access_token,
     DUMMY_PASSWORD_HASH,
+    hash_invitation_token,
+    hash_password,
     hash_refresh_token,
     new_csrf_token,
     new_refresh_token,
+    validate_password_strength,
     verify_password,
 )
 from app.db.session import AsyncSessionLocal
@@ -33,6 +36,19 @@ redis_client = Redis.from_url(settings.redis_url, decode_responses=True)
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=1, max_length=128)
+
+
+class ActivateAccountRequest(BaseModel):
+    token: str = Field(min_length=64, max_length=256)
+    password: str = Field(min_length=12, max_length=128)
+    password_confirmation: str = Field(min_length=12, max_length=128)
+
+    @model_validator(mode="after")
+    def validate_passwords(self) -> "ActivateAccountRequest":
+        validate_password_strength(self.password)
+        if self.password != self.password_confirmation:
+            raise ValueError("Passwords do not match")
+        return self
 
 
 class UserResponse(BaseModel):
@@ -140,6 +156,19 @@ async def _check_login_rate_limit(request: Request, email: str) -> str:
     return key
 
 
+async def _check_activation_rate_limit(request: Request) -> None:
+    ip_address, _ = _client_details(request)
+    key = f"auth:activate:{sha256(str(ip_address).encode()).hexdigest()}"
+    try:
+        attempts = await redis_client.incr(key)
+        if attempts == 1:
+            await redis_client.expire(key, settings.login_rate_limit_window_seconds)
+    except RedisError as exc:
+        raise HTTPException(status_code=503, detail="Authentication temporarily unavailable") from exc
+    if attempts > 10:
+        raise HTTPException(status_code=429, detail="Too many activation attempts")
+
+
 async def _load_user_by_email(email: str) -> tuple[AuthenticatedUser, str] | None:
     async with AsyncSessionLocal() as session:
         result = await session.execute(
@@ -232,6 +261,74 @@ async def login(payload: LoginRequest, request: Request, response: Response) -> 
     await _store_refresh_token(user, refresh_hash, request)
     _set_session_cookies(response, create_access_token(user.id), raw_refresh, csrf_token)
     return _user_response(user)
+
+
+@router.post("/activate")
+async def activate_account(payload: ActivateAccountRequest, request: Request) -> dict[str, str]:
+    verify_same_origin(request)
+    await _check_activation_rate_limit(request)
+    token_hash = hash_invitation_token(payload.token)
+    password_hash = await run_in_threadpool(hash_password, payload.password)
+    ip_address, _ = _client_details(request)
+    async with AsyncSessionLocal() as session, session.begin():
+        result = await session.execute(
+            text(
+                """
+                SELECT ui.id AS invitation_id, u.id AS user_id, u.organisation_id
+                FROM user_invitations ui
+                JOIN users u ON u.id = ui.user_id
+                WHERE ui.token_hash = :token_hash
+                  AND ui.used_at IS NULL
+                  AND ui.expires_at > now()
+                  AND u.is_active = false
+                FOR UPDATE OF ui, u
+                """
+            ),
+            {"token_hash": token_hash},
+        )
+        row = result.mappings().first()
+        if row is None:
+            raise HTTPException(status_code=400, detail="Invalid or expired invitation")
+        await session.execute(
+            text(
+                """
+                UPDATE users
+                SET password_hash = :password_hash, is_active = true,
+                    activated_at = now(), updated_at = now()
+                WHERE id = :user_id
+                """
+            ),
+            {"password_hash": password_hash, "user_id": row["user_id"]},
+        )
+        await session.execute(
+            text(
+                """
+                UPDATE user_invitations SET used_at = now()
+                WHERE user_id = :user_id AND used_at IS NULL
+                """
+            ),
+            {"user_id": row["user_id"]},
+        )
+        await session.execute(
+            text(
+                """
+                INSERT INTO audit_logs (
+                    actor_user_id, organisation_id, action, entity_type,
+                    entity_id, ip_address
+                ) VALUES (
+                    :user_id, :organisation_id, 'user.activate', 'user',
+                    :entity_id, CAST(:ip_address AS inet)
+                )
+                """
+            ),
+            {
+                "user_id": row["user_id"],
+                "organisation_id": row["organisation_id"],
+                "entity_id": str(row["user_id"]),
+                "ip_address": ip_address,
+            },
+        )
+    return {"status": "activated"}
 
 
 @router.post("/refresh", response_model=UserResponse, dependencies=[Depends(verify_csrf)])

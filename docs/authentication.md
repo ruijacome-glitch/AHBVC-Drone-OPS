@@ -11,6 +11,11 @@ Human access to `uas.ahbvc.org.pt` uses server-side sessions backed by:
 - Redis login rate limiting.
 - Database-backed role checks on every protected request.
 
+Administrators do not define or email temporary passwords. New accounts remain
+inactive until the recipient uses a random, single-use invitation link and
+chooses a password. Invitation tokens expire after 24 hours by default and only
+their SHA-256 hashes are stored in PostgreSQL.
+
 DJI Pilot 2 opens the same institutional login. After a pilot authenticates, the
 server authorizes the technical DJI configuration and records the operator,
 controller and aircraft in a pilot session. No token is entered in the controller URL.
@@ -39,7 +44,14 @@ docker compose exec -T postgres sh -c \
 docker compose exec -T postgres sh -c \
   'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' \
   < database/migrations/003_pilot_sessions.sql
+
+docker compose exec -T postgres sh -c \
+  'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' \
+  < database/migrations/005_user_invitations.sql
 ```
+
+Users that were active before this migration remain active. The invitation
+workflow applies to accounts created afterwards through the administration UI.
 
 Create the initial administrator after rebuilding the API. The password is requested interactively and is not added to shell history:
 

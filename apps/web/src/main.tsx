@@ -492,7 +492,68 @@ function AccessDeniedPage() {
 
 function App() {
   const mode = useHostMode();
+  if (mode === "ops" && window.location.pathname === "/activate") {
+    return <ActivateAccountPage />;
+  }
   return <AuthProvider><ProtectedApp mode={mode} /></AuthProvider>;
+}
+
+function ActivateAccountPage() {
+  const reduceMotion = useReducedMotion();
+  const [token] = React.useState(() => new URLSearchParams(window.location.search).get("token") ?? "");
+  const [password, setPassword] = React.useState("");
+  const [confirmation, setConfirmation] = React.useState("");
+  const [showPassword, setShowPassword] = React.useState(false);
+  const [submitting, setSubmitting] = React.useState(false);
+  const [complete, setComplete] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (window.location.search) window.history.replaceState(null, "", "/activate");
+  }, []);
+
+  async function activate(event: React.FormEvent) {
+    event.preventDefault();
+    if (password !== confirmation) { setError("As passwords não coincidem."); return; }
+    setSubmitting(true); setError(null);
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/v1/auth/activate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, password, password_confirmation: confirmation }),
+      });
+      const result = (await response.json().catch(() => ({}))) as { detail?: string | Array<{ msg: string }> };
+      if (!response.ok) {
+        const detail = Array.isArray(result.detail) ? result.detail[0]?.msg : result.detail;
+        throw new Error(response.status === 400 ? "O convite é inválido ou expirou." : detail ?? "Não foi possível ativar a conta.");
+      }
+      setComplete(true);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Não foi possível ativar a conta.");
+    } finally { setSubmitting(false); }
+  }
+
+  return (
+    <main className="auth-page">
+      <div className="auth-theme"><ThemeToggle compact /></div>
+      <motion.section className="auth-panel" initial={reduceMotion ? false : { opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.24 }} aria-labelledby="activation-title">
+        <header className="auth-brand"><img src="/ahbvc.png" alt="Logótipo dos Bombeiros Voluntários de Cascais" /><div><span>Bombeiros Voluntários de Cascais</span><strong>UAS Platform</strong></div></header>
+        {complete ? <div className="auth-complete"><CheckCircle2 size={38} /><h1 id="activation-title">Conta ativada</h1><p>A password foi definida. Já pode iniciar sessão na plataforma.</p><a className="primary-action" href="/">Iniciar sessão</a></div> : <>
+          <div className="auth-copy"><p className="eyebrow">Ativação de conta</p><h1 id="activation-title">Definir password</h1><p>Escolha uma password segura para concluir o seu registo.</p></div>
+          <form className="auth-form" onSubmit={activate}>
+            <label htmlFor="activation-password">Nova password</label>
+            <div className="auth-input"><LockKeyhole size={18} /><input id="activation-password" type={showPassword ? "text" : "password"} autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} minLength={12} required /><button type="button" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? "Ocultar password" : "Mostrar password"}>{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}</button></div>
+            <label htmlFor="activation-confirmation">Confirmar password</label>
+            <div className="auth-input"><LockKeyhole size={18} /><input id="activation-confirmation" type={showPassword ? "text" : "password"} autoComplete="new-password" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} minLength={12} required /></div>
+            <p className="password-guidance">Mínimo 12 caracteres, incluindo maiúscula, minúscula e número.</p>
+            {!token ? <p className="auth-error" role="alert">O link de convite está incompleto.</p> : null}
+            {error ? <p className="auth-error" role="alert">{error}</p> : null}
+            <button className="primary-action auth-submit" type="submit" disabled={!token || submitting}>{submitting ? <CircleDashed className="spin" size={18} /> : <ShieldCheck size={18} />}{submitting ? "A ativar..." : "Ativar conta"}</button>
+          </form>
+        </>}
+      </motion.section>
+    </main>
+  );
 }
 
 function PilotAccessDeniedPage() {
@@ -1010,16 +1071,16 @@ function TelemetryMap({ history, track }: { history: Telemetry[]; track: FlightT
   );
 }
 
-type ManagedUser = AuthUser & { is_active: boolean };
+type ManagedUser = AuthUser & { is_active: boolean; invitation_status: "pending" | "sent" | "failed" | "accepted" };
 
 function UserManagementPage() {
   const [users, setUsers] = React.useState<ManagedUser[]>([]);
   const [email, setEmail] = React.useState("");
   const [fullName, setFullName] = React.useState("");
-  const [password, setPassword] = React.useState("");
   const [roles, setRoles] = React.useState<string[]>(["Observador"]);
   const [message, setMessage] = React.useState<string | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
+  const [resendingUserId, setResendingUserId] = React.useState<string | null>(null);
   const roleOptions = ["Administrador", "Operador", "Piloto", "Observador"];
 
   const loadUsers = React.useCallback(async () => {
@@ -1038,18 +1099,31 @@ function UserManagementPage() {
     if (!roles.length) { setMessage("Selecione pelo menos um perfil."); return; }
     setSubmitting(true); setMessage(null);
     try {
-      const response = await authenticatedFetch("/api/v1/users", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, full_name: fullName, password, roles }) });
+      const response = await authenticatedFetch("/api/v1/users", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, full_name: fullName, roles }) });
       const result = (await response.json().catch(() => ({}))) as { detail?: string | Array<{ msg: string }> };
       if (!response.ok) {
         const detail = Array.isArray(result.detail) ? result.detail[0]?.msg : result.detail;
         throw new Error(detail ?? "Não foi possível criar o utilizador.");
       }
-      setEmail(""); setFullName(""); setPassword(""); setRoles(["Observador"]);
-      setMessage("Utilizador criado com sucesso.");
+      const created = result as ManagedUser;
+      setEmail(""); setFullName(""); setRoles(["Observador"]);
+      setMessage(created.invitation_status === "sent" ? "Utilizador criado e convite enviado por email." : "Utilizador criado, mas o email falhou. Pode reenviar o convite na lista.");
       await loadUsers();
     } catch (reason) {
       setMessage(reason instanceof Error ? reason.message : "Não foi possível criar o utilizador.");
     } finally { setSubmitting(false); }
+  }
+
+  async function resendInvitation(userId: string) {
+    setResendingUserId(userId); setMessage(null);
+    try {
+      const response = await authenticatedFetch(`/api/v1/users/${userId}/invite`, { method: "POST" });
+      const result = (await response.json().catch(() => ({}))) as ManagedUser & { detail?: string };
+      if (!response.ok) throw new Error(result.detail ?? "Não foi possível reenviar o convite.");
+      setMessage(result.invitation_status === "sent" ? "Convite reenviado por email." : "O novo convite foi criado, mas o envio de email falhou.");
+      await loadUsers();
+    } catch (reason) { setMessage(reason instanceof Error ? reason.message : "Não foi possível reenviar o convite."); }
+    finally { setResendingUserId(null); }
   }
 
   return (
@@ -1062,14 +1136,14 @@ function UserManagementPage() {
             <div className="panel-heading"><UserRound size={20} /><div><h2>Novo utilizador</h2><span>Crie uma conta e atribua os perfis necessários.</span></div></div>
             <label htmlFor="user-name">Nome completo</label><input id="user-name" value={fullName} onChange={(event) => setFullName(event.target.value)} minLength={2} required />
             <label htmlFor="user-email">Email institucional</label><input id="user-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} required />
-            <label htmlFor="user-password">Password temporária</label><input id="user-password" type="password" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} minLength={12} required /><small>Mínimo 12 caracteres, com maiúscula, minúscula e número.</small>
+            <p className="invite-note"><Mail size={18} />O utilizador receberá um link seguro para definir a própria password.</p>
             <fieldset><legend>Perfis</legend><div className="role-options">{roleOptions.map((role) => <label key={role}><input type="checkbox" checked={roles.includes(role)} onChange={() => toggleRole(role)} /><span>{role}</span></label>)}</div></fieldset>
             {message ? <p className="user-form-message" role="status">{message}</p> : null}
             <button className="primary-action" type="submit" disabled={submitting}>{submitting ? <CircleDashed className="spin" size={18} /> : <Users size={18} />}{submitting ? "A criar..." : "Criar utilizador"}</button>
           </form>
           <section className="panel users-list" aria-label="Utilizadores registados">
             <div className="panel-heading"><Users size={20} /><div><h2>Contas registadas</h2><span>Perfis atualmente atribuídos</span></div></div>
-            <div className="users-table" role="table">{users.map((item) => <div className="user-row" role="row" key={item.id}><div className="user-avatar" aria-hidden="true">{item.full_name.slice(0, 2).toUpperCase()}</div><div><strong>{item.full_name}</strong><span>{item.email}</span></div><div className="role-badges">{item.roles.map((role) => <span key={role}>{role}</span>)}</div><span className={`service-state ${item.is_active ? "is-online" : "is-offline"}`}><span />{item.is_active ? "Ativo" : "Inativo"}</span></div>)}</div>
+            <div className="users-table" role="table">{users.map((item) => <div className="user-row" role="row" key={item.id}><div className="user-avatar" aria-hidden="true">{item.full_name.slice(0, 2).toUpperCase()}</div><div><strong>{item.full_name}</strong><span>{item.email}</span></div><div className="role-badges">{item.roles.map((role) => <span key={role}>{role}</span>)}</div><span className={`service-state ${item.is_active ? "is-online" : item.invitation_status === "failed" ? "is-error" : "is-offline"}`}><span />{item.is_active ? "Ativo" : item.invitation_status === "sent" ? "Convite enviado" : item.invitation_status === "failed" ? "Email falhou" : "Pendente"}</span>{!item.is_active ? <motion.button className="icon-action" type="button" onClick={() => void resendInvitation(item.id)} disabled={resendingUserId === item.id} whileTap={{ scale: 0.96 }} title="Reenviar convite" aria-label={`Reenviar convite para ${item.full_name}`}>{resendingUserId === item.id ? <CircleDashed className="spin" size={17} /> : <Mail size={17} />}</motion.button> : null}</div>)}</div>
           </section>
         </section>
       </section>

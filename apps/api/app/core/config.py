@@ -73,6 +73,7 @@ class Settings(BaseSettings):
     smtp_from_name: str = "AHBVC UAS Platform"
     smtp_start_tls: bool = True
     smtp_use_tls: bool = False
+    invitation_expire_hours: int = 24
 
     @cached_property
     def cors_origins(self) -> list[str]:
