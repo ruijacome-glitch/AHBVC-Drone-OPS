@@ -348,6 +348,113 @@ h1 {
   gap: 12px;
 }
 
+.stream-heading {
+  grid-template-columns: auto 1fr auto;
+}
+
+.stream-heading span {
+  color: var(--color-muted);
+  font-size: 0.78rem;
+}
+
+.icon-action {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--color-foreground);
+  cursor: pointer;
+}
+
+.icon-action:hover {
+  background: #f8fafc;
+}
+
+.icon-action:focus-visible,
+.camera-option:focus-visible,
+.secondary-action:focus-visible {
+  outline: 3px solid rgba(37, 99, 235, 0.28);
+  outline-offset: 2px;
+}
+
+.camera-options {
+  display: grid;
+  gap: 8px;
+}
+
+.camera-option {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) 18px;
+  min-height: 62px;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--color-foreground);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 180ms ease, background 180ms ease;
+}
+
+.camera-option > span {
+  display: grid;
+  min-width: 0;
+}
+
+.camera-option small {
+  overflow: hidden;
+  color: var(--color-muted);
+  font-family: "Fira Code", monospace;
+  font-size: 0.68rem;
+  text-overflow: ellipsis;
+}
+
+.camera-option > svg:last-child {
+  color: transparent;
+}
+
+.camera-option:hover {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+}
+
+.camera-option.selected {
+  border-color: var(--color-accent);
+  background: #eff6ff;
+}
+
+.camera-option.selected > svg:last-child {
+  color: var(--color-accent);
+}
+
+.stream-empty,
+.stream-placeholder {
+  display: grid;
+  place-items: center;
+  gap: 8px;
+  color: var(--color-muted);
+  text-align: center;
+}
+
+.stream-empty {
+  min-height: 92px;
+  border: 1px dashed var(--color-border);
+  border-radius: 8px;
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 .stream-controls label {
   display: grid;
   gap: 5px;
@@ -374,6 +481,10 @@ h1 {
 }
 
 .secondary-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   min-height: 48px;
   border: 1px solid var(--color-border);
   border-radius: 8px;
@@ -383,19 +494,36 @@ h1 {
   font-weight: 700;
 }
 
+.secondary-action:disabled {
+  cursor: not-allowed;
+  color: #94a3b8;
+}
+
 .stream-message {
   margin: 0;
   color: var(--color-muted);
   line-height: 1.45;
 }
 
-.stream-links {
+.stream-technical {
   display: grid;
   gap: 5px;
   font-size: 0.86rem;
 }
 
-.stream-links a {
+.stream-technical summary {
+  cursor: pointer;
+  color: var(--color-muted);
+  font-weight: 600;
+}
+
+.stream-technical span {
+  display: block;
+  margin-top: 5px;
+  overflow-wrap: anywhere;
+}
+
+.stream-technical a {
   color: var(--color-accent);
 }
 
@@ -412,6 +540,17 @@ h1 {
   height: 100%;
   min-height: 560px;
   border: 0;
+}
+
+.stream-placeholder {
+  height: 560px;
+  align-content: center;
+  color: #cbd5e1;
+}
+
+.stream-placeholder strong {
+  color: #ffffff;
+  font-size: 1.1rem;
 }
 
 .map-panel {
@@ -663,6 +802,10 @@ h1 {
 }
 
 .primary-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   min-height: 48px;
   width: 100%;
   cursor: pointer;

@@ -10,6 +10,12 @@ from app.services.dji_mqtt import dji_mqtt_consumer
 router = APIRouter(prefix="/livestreams", tags=["livestream"])
 
 
+@router.get("/options")
+async def livestream_options() -> dict[str, object]:
+    """List video sources currently advertised by DJI Pilot 2."""
+    return {"options": dji_mqtt_consumer.livestream_options()}
+
+
 class LiveStartRequest(BaseModel):
     gateway_sn: str = Field(min_length=3)
     video_id: str = Field(min_length=3)

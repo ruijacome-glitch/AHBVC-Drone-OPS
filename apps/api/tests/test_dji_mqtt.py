@@ -67,6 +67,56 @@ def test_mqtt_consumer_records_json_message() -> None:
     assert snapshot["devices"]["aircraft-123"]["message_count"] == 1
 
 
+def test_mqtt_consumer_exposes_official_livestream_options() -> None:
+    consumer = DjiMqttConsumer()
+    message = SimpleNamespace(
+        topic="thing/product/gateway-123/state",
+        payload=json.dumps(
+            {
+                "data": {
+                    "live_capacity": {
+                        "device_list": [
+                            {
+                                "sn": "aircraft-123",
+                                "camera_list": [
+                                    {
+                                        "camera_index": "53-0-0",
+                                        "video_list": [
+                                            {"video_index": "wide-0", "video_type": "wide"},
+                                            {"video_index": "thermal-0", "video_type": "thermal"},
+                                        ],
+                                    }
+                                ],
+                            }
+                        ]
+                    }
+                }
+            }
+        ).encode(),
+    )
+
+    consumer._on_message(None, None, message)  # noqa: SLF001
+
+    assert consumer.livestream_options() == [
+        {
+            "gateway_sn": "gateway-123",
+            "aircraft_sn": "aircraft-123",
+            "camera_index": "53-0-0",
+            "video_index": "wide-0",
+            "video_type": "wide",
+            "video_id": "aircraft-123/53-0-0/wide-0",
+        },
+        {
+            "gateway_sn": "gateway-123",
+            "aircraft_sn": "aircraft-123",
+            "camera_index": "53-0-0",
+            "video_index": "thermal-0",
+            "video_type": "thermal",
+            "video_id": "aircraft-123/53-0-0/thermal-0",
+        },
+    ]
+
+
 def test_normalize_matrice_30t_osd_preserves_thermal_and_navigation_data() -> None:
     telemetry = normalize_osd(
         "aircraft-123",

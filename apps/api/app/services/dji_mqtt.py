@@ -53,6 +53,7 @@ class DjiMqttState:
     last_error: str | None = None
     last_connected_at: datetime | None = None
     devices: dict[str, DeviceMqttState] = field(default_factory=dict)
+    live_capacities: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
 class DjiMqttConsumer:
@@ -122,6 +123,35 @@ class DjiMqttConsumer:
                     for sn, device in self._state.devices.items()
                 },
             }
+
+    def livestream_options(self) -> list[dict[str, Any]]:
+        """Return DJI-advertised video sources without exposing device secrets."""
+        with self._lock:
+            options: list[dict[str, Any]] = []
+            for gateway_sn, capacity in self._state.live_capacities.items():
+                for device in capacity.get("device_list", []):
+                    aircraft_sn = device.get("sn")
+                    if not isinstance(aircraft_sn, str):
+                        continue
+                    for camera in device.get("camera_list", []):
+                        camera_index = camera.get("camera_index")
+                        if not isinstance(camera_index, str):
+                            continue
+                        for video in camera.get("video_list", []):
+                            video_index = video.get("video_index")
+                            if not isinstance(video_index, str):
+                                continue
+                            options.append(
+                                {
+                                    "gateway_sn": gateway_sn,
+                                    "aircraft_sn": aircraft_sn,
+                                    "camera_index": camera_index,
+                                    "video_index": video_index,
+                                    "video_type": video.get("video_type", "unknown"),
+                                    "video_id": f"{aircraft_sn}/{camera_index}/{video_index}",
+                                }
+                            )
+            return options
 
     def publish_service(self, gateway_sn: str, method: str, data: dict[str, Any]) -> dict[str, str]:
         """Publish an official DJI service envelope to a gateway."""
@@ -200,6 +230,10 @@ class DjiMqttConsumer:
                 self._apply_topology_update(sn, payload, now)
             elif parts[:2] == ["thing", "product"] and len(parts) >= 4 and parts[3] == "osd":
                 self._persist_osd_message(sn, payload, message.topic)
+
+            data = payload.get("data")
+            if isinstance(data, dict) and isinstance(data.get("live_capacity"), dict):
+                self._state.live_capacities[sn] = data["live_capacity"]
 
         if parts[:2] == ["sys", "product"] and len(parts) >= 4 and parts[3] == "status":
             self._publish_status_reply(client, message.topic, payload)

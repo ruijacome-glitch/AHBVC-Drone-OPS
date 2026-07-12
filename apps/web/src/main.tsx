@@ -6,11 +6,17 @@ import {
   CheckCircle2,
   CircleDashed,
   MapPin,
+  Play,
   Radio,
+  RefreshCw,
   ShieldAlert,
   ShieldCheck,
+  Square,
+  Thermometer,
+  Video,
   Wifi,
   XCircle,
+  ZoomIn,
 } from "lucide-react";
 import { motion, useReducedMotion } from "framer-motion";
 import maplibregl from "maplibre-gl";
@@ -50,6 +56,15 @@ type BridgeResult = {
 type MqttStatus = {
   connected: boolean;
   devices: Record<string, { message_count: number; last_message_at?: string | null }>;
+};
+
+type LivestreamOption = {
+  gateway_sn: string;
+  aircraft_sn: string;
+  camera_index: string;
+  video_index: string;
+  video_type: string;
+  video_id: string;
 };
 
 type Telemetry = {
@@ -490,37 +505,81 @@ function FlightHistoryPage() {
 }
 
 function LiveStreamPage() {
-  const gatewaySn = "4LFCM3M006Q6DR";
-  const [videoId, setVideoId] = React.useState("");
-  const [token, setToken] = React.useState("");
+  const [options, setOptions] = React.useState<LivestreamOption[]>([]);
+  const [selectedVideoId, setSelectedVideoId] = React.useState("");
+  const [token, setToken] = React.useState<string | null>(null);
   const [quality, setQuality] = React.useState("0");
   const [streaming, setStreaming] = React.useState(false);
+  const [loading, setLoading] = React.useState(true);
+  const [sending, setSending] = React.useState(false);
   const [message, setMessage] = React.useState<string | null>(null);
+  const selectedOption = options.find((option) => option.video_id === selectedVideoId) ?? options[0];
+  const gatewaySn = selectedOption?.gateway_sn ?? "";
   const streamUrl = `https://stream.uas.ahbvc.org.pt/live/${gatewaySn}`;
   const hlsUrl = `${streamUrl}/index.m3u8`;
 
+  const loadOptions = React.useCallback(async () => {
+    try {
+      const [configResponse, optionsResponse] = await Promise.all([
+        fetch(`${apiBaseUrl}/api/v1/dji/pilot/jsbridge-config`),
+        fetch(`${apiBaseUrl}/api/v1/livestreams/options`),
+      ]);
+      if (!configResponse.ok || !optionsResponse.ok) throw new Error("Configuração indisponível");
+      const config = (await configResponse.json()) as JsBridgeConfig;
+      const result = (await optionsResponse.json()) as { options: LivestreamOption[] };
+      setToken(config.api_token);
+      setOptions(result.options);
+      setSelectedVideoId((current) => current || result.options[0]?.video_id || "");
+      setMessage(result.options.length ? null : "A aguardar as câmaras anunciadas pelo DJI Pilot 2.");
+    } catch {
+      setMessage("Não foi possível obter as câmaras disponíveis.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    void loadOptions();
+    const timer = window.setInterval(() => void loadOptions(), 10000);
+    return () => window.clearInterval(timer);
+  }, [loadOptions]);
+
   async function sendCommand(action: "start" | "stop") {
-    if (!videoId.trim()) {
-      setMessage("Indica o video_id oficial da câmara antes de iniciar.");
+    if (!selectedOption || !token) {
+      setMessage("A configuração DJI ainda não está pronta.");
       return;
     }
-    const response = await fetch(`${apiBaseUrl}/api/v1/livestreams/${action}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-auth-token": token },
-      body: JSON.stringify({
-        gateway_sn: gatewaySn,
-        video_id: videoId.trim(),
-        ...(action === "start" ? { video_quality: Number(quality) } : {}),
-      }),
-    });
-    const result = (await response.json()) as { detail?: string; status?: string };
-    if (!response.ok) {
-      setMessage(result.detail ?? "Não foi possível enviar o comando DJI.");
-      return;
+    setSending(true);
+    setMessage(null);
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/v1/livestreams/${action}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-auth-token": token },
+        body: JSON.stringify({
+          gateway_sn: selectedOption.gateway_sn,
+          video_id: selectedOption.video_id,
+          ...(action === "start" ? { video_quality: Number(quality) } : {}),
+        }),
+      });
+      const result = (await response.json()) as { detail?: string };
+      if (!response.ok) throw new Error(result.detail ?? "Não foi possível enviar o comando DJI.");
+      setStreaming(action === "start");
+      setMessage(action === "start" ? "A iniciar vídeo no DJI Pilot 2..." : "Transmissão terminada.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Falha ao controlar a transmissão.");
+    } finally {
+      setSending(false);
     }
-    setStreaming(action === "start");
-    setMessage(action === "start" ? "Comando enviado. Aguarda o Pilot 2 iniciar o stream." : "Comando de paragem enviado.");
   }
+
+  const cameraLabel = (option: LivestreamOption) => ({
+    wide: "Grande angular",
+    zoom: "Zoom",
+    thermal: "Térmica",
+    normal: "Câmara FPV",
+  }[option.video_type] ?? option.video_type);
+
+  const CameraIcon = ({ type }: { type: string }) => type === "thermal" ? <Thermometer size={20} /> : type === "zoom" ? <ZoomIn size={20} /> : <Video size={20} />;
 
   return (
     <main className="app-shell">
@@ -540,16 +599,21 @@ function LiveStreamPage() {
         </header>
         <section className="stream-layout">
           <form className="panel stream-controls" onSubmit={(event) => { event.preventDefault(); void sendCommand("start"); }}>
-            <div className="panel-heading"><Radio aria-hidden="true" size={20} /><h2>Controlar transmissão</h2></div>
-            <label>Gateway SN<input value={gatewaySn} readOnly /></label>
-            <label>Video ID DJI<input value={videoId} onChange={(event) => setVideoId(event.target.value)} placeholder="SN/camera_index/video_index" /></label>
+            <div className="panel-heading stream-heading"><Radio aria-hidden="true" size={20} /><div><h2>Fonte de vídeo</h2><span>Selecione uma câmara disponível</span></div><button className="icon-action" type="button" onClick={() => void loadOptions()} aria-label="Atualizar câmaras" title="Atualizar câmaras"><RefreshCw size={18} /></button></div>
+            <div className="camera-options" aria-label="Câmaras DJI disponíveis">
+              {loading ? <div className="stream-empty"><CircleDashed className="spin" size={24} /><span>A detetar câmaras...</span></div> : options.map((option) => (
+                <motion.button className={`camera-option ${selectedOption?.video_id === option.video_id ? "selected" : ""}`} key={option.video_id} type="button" onClick={() => setSelectedVideoId(option.video_id)} whileTap={{ scale: 0.98 }}>
+                  <CameraIcon type={option.video_type} /><span><strong>{cameraLabel(option)}</strong><small>{option.aircraft_sn}</small></span><CheckCircle2 size={18} aria-hidden="true" />
+                </motion.button>
+              ))}
+              {!loading && options.length === 0 ? <div className="stream-empty"><Video size={24} /><span>Nenhuma câmara anunciada</span></div> : null}
+            </div>
             <label>Qualidade<select value={quality} onChange={(event) => setQuality(event.target.value)}><option value="0">Adaptativa</option><option value="1">Fluida</option><option value="2">SD</option><option value="3">HD</option><option value="4">UHD</option></select></label>
-            <label>Token da plataforma<input type="password" value={token} onChange={(event) => setToken(event.target.value)} /></label>
-            <div className="stream-actions"><button className="primary-action" type="button" onClick={() => void sendCommand("start")}>Iniciar stream</button><button className="secondary-action" type="button" onClick={() => void sendCommand("stop")}>Parar</button></div>
-            {message ? <p className="stream-message">{message}</p> : null}
-            <div className="stream-links"><span>WebRTC: <a href={streamUrl} target="_blank" rel="noreferrer">abrir player</a></span><span>HLS: <a href={hlsUrl} target="_blank" rel="noreferrer">abrir playlist</a></span></div>
+            <div className="stream-actions"><button className="primary-action" type="submit" disabled={!selectedOption || !token || sending}><Play size={18} />{sending ? "A enviar..." : "Iniciar stream"}</button><button className="secondary-action" type="button" disabled={!selectedOption || sending} onClick={() => void sendCommand("stop")}><Square size={16} />Parar</button></div>
+            {message ? <p className="stream-message" role="status">{message}</p> : null}
+            {gatewaySn ? <details className="stream-technical"><summary>Detalhes técnicos</summary><span>Gateway: {gatewaySn}</span><span>Video ID: {selectedOption?.video_id}</span><span>WebRTC: <a href={streamUrl} target="_blank" rel="noreferrer">abrir player</a></span><span>HLS: <a href={hlsUrl} target="_blank" rel="noreferrer">abrir playlist</a></span></details> : null}
           </form>
-          <div className="stream-view panel"><iframe title="DJI WebRTC livestream" src={streamUrl} allow="autoplay; fullscreen" /></div>
+          <div className="stream-view panel">{streaming && gatewaySn ? <iframe key={streamUrl} title="DJI WebRTC livestream" src={streamUrl} allow="autoplay; fullscreen" /> : <div className="stream-placeholder"><Radio size={40} /><strong>Transmissão parada</strong><span>Escolha uma câmara e inicie o stream.</span></div>}</div>
         </section>
       </section>
     </main>
