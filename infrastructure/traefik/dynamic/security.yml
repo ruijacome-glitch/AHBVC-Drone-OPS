@@ -10,3 +10,14 @@ http:
         stsIncludeSubdomains: true
         stsPreload: true
 
+    stream-headers:
+      headers:
+        browserXssFilter: true
+        contentTypeNosniff: true
+        frameDeny: false
+        customResponseHeaders:
+          Content-Security-Policy: "frame-ancestors 'self' https://uas.ahbvc.org.pt"
+        referrerPolicy: strict-origin-when-cross-origin
+        stsSeconds: 31536000
+        stsIncludeSubdomains: true
+        stsPreload: true

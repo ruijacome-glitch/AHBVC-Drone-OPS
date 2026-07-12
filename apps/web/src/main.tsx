@@ -532,7 +532,7 @@ function LiveStreamPage() {
           <span className={`status-pill ${streaming ? "online" : "offline"}`}>{streaming ? "Comando activo" : "Parado"}</span>
         </header>
         <section className="stream-layout">
-          <div className="panel stream-controls">
+          <form className="panel stream-controls" onSubmit={(event) => { event.preventDefault(); void sendCommand("start"); }}>
             <div className="panel-heading"><Radio aria-hidden="true" size={20} /><h2>Controlar transmissão</h2></div>
             <label>Gateway SN<input value={gatewaySn} readOnly /></label>
             <label>Video ID DJI<input value={videoId} onChange={(event) => setVideoId(event.target.value)} placeholder="SN/camera_index/video_index" /></label>
@@ -541,7 +541,7 @@ function LiveStreamPage() {
             <div className="stream-actions"><button className="primary-action" type="button" onClick={() => void sendCommand("start")}>Iniciar stream</button><button className="secondary-action" type="button" onClick={() => void sendCommand("stop")}>Parar</button></div>
             {message ? <p className="stream-message">{message}</p> : null}
             <div className="stream-links"><span>WebRTC: <a href={streamUrl} target="_blank" rel="noreferrer">abrir player</a></span><span>HLS: <a href={hlsUrl} target="_blank" rel="noreferrer">abrir playlist</a></span></div>
-          </div>
+          </form>
           <div className="stream-view panel"><iframe title="DJI WebRTC livestream" src={streamUrl} allow="autoplay; fullscreen" /></div>
         </section>
       </section>

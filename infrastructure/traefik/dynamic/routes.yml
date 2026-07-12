@@ -36,7 +36,7 @@ http:
         - websecure
       service: stream
       middlewares:
-        - security-headers
+        - stream-headers
       tls:
         certResolver: letsencrypt
 
@@ -87,4 +87,3 @@ tcp:
       loadBalancer:
         servers:
           - address: "emqx:1883"
-
