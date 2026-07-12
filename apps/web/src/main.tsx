@@ -9,6 +9,7 @@ import {
   Database,
   History,
   MapPin,
+  Moon,
   Play,
   Radio,
   RefreshCw,
@@ -16,6 +17,7 @@ import {
   ShieldAlert,
   ShieldCheck,
   Square,
+  Sun,
   Thermometer,
   Video,
   Wifi,
@@ -29,6 +31,17 @@ import "./styles.css";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
+
+type Theme = "light" | "dark";
+
+function preferredTheme(): Theme {
+  const saved = window.localStorage.getItem("uas:theme");
+  if (saved === "light" || saved === "dark") return saved;
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+const initialTheme = preferredTheme();
+document.documentElement.dataset.theme = initialTheme;
 
 type JsBridgeConfig = {
   setup_ready: boolean;
@@ -243,6 +256,31 @@ function useHostMode() {
   return window.location.hostname.startsWith("pilot.") ? "pilot" : "ops";
 }
 
+function ThemeToggle({ compact = false }: { compact?: boolean }) {
+  const [theme, setTheme] = React.useState<Theme>(initialTheme);
+  const nextTheme = theme === "dark" ? "light" : "dark";
+
+  function toggleTheme() {
+    setTheme(nextTheme);
+    document.documentElement.dataset.theme = nextTheme;
+    window.localStorage.setItem("uas:theme", nextTheme);
+  }
+
+  return (
+    <motion.button
+      className={`theme-toggle ${compact ? "compact" : ""}`}
+      type="button"
+      onClick={toggleTheme}
+      whileTap={{ scale: 0.97 }}
+      aria-label={`Ativar modo ${nextTheme === "dark" ? "escuro" : "claro"}`}
+      title={`Ativar modo ${nextTheme === "dark" ? "escuro" : "claro"}`}
+    >
+      <span className="theme-toggle-icon" aria-hidden="true">{theme === "dark" ? <Moon size={18} /> : <Sun size={18} />}</span>
+      {!compact ? <span><strong>{theme === "dark" ? "Modo escuro" : "Modo claro"}</strong><small>Alterar aparência</small></span> : null}
+    </motion.button>
+  );
+}
+
 function App() {
   const mode = useHostMode();
   if (mode === "pilot") return <PilotPage />;
@@ -329,6 +367,7 @@ function OpsDashboard() {
             Configuracao
           </a>
         </nav>
+        <ThemeToggle />
       </aside>
 
       <section className="workspace">
@@ -452,6 +491,7 @@ function FlightHistoryPage() {
           <a className="nav-link" href="/stream">Livestream</a>
           <a className="nav-link" href="/pilot">Pilot 2</a>
         </nav>
+        <ThemeToggle />
       </aside>
       <section className="workspace">
         <header className="topbar">
@@ -575,6 +615,7 @@ function LiveStreamPage() {
           <a className="nav-link active" href="/stream">Livestream</a>
           <a className="nav-link" href="/pilot">Pilot 2</a>
         </nav>
+        <ThemeToggle />
       </aside>
       <section className="workspace">
         <header className="topbar">
@@ -1120,7 +1161,7 @@ function PilotPage() {
         animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
         transition={{ duration: 0.22 }}
       >
-        <p className="eyebrow">DJI Pilot 2 Open Platform</p>
+        <div className="pilot-card-header"><p className="eyebrow">DJI Pilot 2 Open Platform</p><ThemeToggle compact /></div>
         <h1 id="pilot-title">UAS Platform</h1>
         <p className="intro">
           Portal tecnico para autenticar o JSBridge, definir workspace e iniciar a ligacao Cloud API.
