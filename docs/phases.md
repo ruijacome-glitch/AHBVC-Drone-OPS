@@ -58,6 +58,31 @@ Streaming:
 - Expose WebRTC in browser and HLS fallback.
 - Associate each livestream with occurrence, mission, drone, and controller.
 
+## Phase 5.5
+
+External Stream Sharing:
+
+- Generate one read-only invitation for all active drone streams associated
+  with an occurrence or mission, with optional selection of individual streams.
+- Share the invitation as a QR code, by email, or by SMS.
+- Use an opaque, expiring and revocable token; store only its hash.
+- Exchange the invitation token for a short-lived viewer session and remove it
+  from the browser address before loading any stream.
+- Show WebRTC first and use HLS as fallback, including clear offline and
+  reconnecting states for each drone.
+- Never expose DJI credentials, MQTT credentials, MediaMTX publication keys, or
+  internal stream URLs to external viewers.
+- Audit invitation creation, access, revocation and delivery attempts without
+  storing raw tokens or unnecessary recipient data.
+- Permit stream invitation creation and revocation only to authorized internal
+  roles. Initial policy: Administrator and Operator.
+- Reuse the configured SMTP service for email delivery.
+- Add an SMS provider interface and implement the Preventech adapter only from
+  its official API documentation and real request/response examples.
+- TODO(Preventech SMS): confirm base URL, authentication, endpoint, sender
+  restrictions, request/response schema, delivery receipt webhook, rate limits,
+  sandbox and production credentials. Do not invent this contract.
+
 ## Phase 6
 
 Media Management:

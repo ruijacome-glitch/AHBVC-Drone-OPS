@@ -60,3 +60,37 @@ Expected derived fields include minimum temperature, maximum temperature,
 average temperature, hotspot pixel, coldspot pixel, thermal scale, measurement
 settings, and a clear accuracy/TODO note until DJI thermal assumptions are fully
 validated.
+
+## External Stream Sharing Boundary
+
+External viewers must not authenticate against DJI Pilot 2, MQTT or MediaMTX.
+An authenticated Administrator or Operator creates an invitation scoped to an
+occurrence or mission. By default, the viewer page resolves all active streams
+in that scope, which supports the initial two-drone deployment without issuing a
+different link for every aircraft.
+
+The invitation URL should carry a random token in the URL fragment, for example
+`https://uas.ahbvc.org.pt/share/streams#token=<opaque-token>`. The fragment is
+not included in HTTP access logs. The frontend exchanges it once through a POST
+request, clears the fragment, and receives a short-lived HttpOnly, Secure and
+SameSite viewer session. Only the token hash is persisted.
+
+Future persistence should include:
+
+- `stream_shares`: organisation, occurrence, mission, scope, token hash,
+  expiration, revocation, creator and audit timestamps.
+- `stream_share_items`: optional explicit stream selection when the share does
+  not include all streams in the mission or occurrence.
+- `share_deliveries`: channel, masked recipient, delivery state, provider
+  reference and timestamps.
+
+Playback authorization must be enforced by the API or a MediaMTX authentication
+hook. A valid viewer session may read only the selected stream paths and cannot
+publish, enumerate unrelated paths or call platform management APIs. Apply rate
+limits, expiry checks and revocation on every session exchange and stream
+authorization decision.
+
+QR generation is local and contains the same invitation URL. Email uses the
+existing SMTP module. SMS is accessed through a provider-neutral interface;
+Preventech credentials remain server-side and its adapter must not be written
+until the official provider contract is available.
