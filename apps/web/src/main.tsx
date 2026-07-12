@@ -144,6 +144,7 @@ declare global {
     djiBridge?: DjiBridge;
     uasPilotBridgeThingCallback?: (payload: string | boolean) => void;
     connectCallback?: (payload: string | boolean) => void;
+    liveStatusCallback?: (payload: string) => void;
   }
 }
 
@@ -186,6 +187,12 @@ const setupSteps: SetupStep[] = [
     label: "Carregar modulo MQTT",
     status: "pending",
     detail: "Ligacao thing ao EMQX para telemetria.",
+  },
+  {
+    id: "liveshare",
+    label: "Carregar modulo livestream",
+    status: "pending",
+    detail: "Capacidades de livestream e video_id do gateway DJI.",
   },
   {
     id: "tsa",
@@ -780,6 +787,9 @@ function PilotPage() {
     };
     window.connectCallback = connectCallback;
     window.uasPilotBridgeThingCallback = connectCallback;
+    window.liveStatusCallback = (payload) => {
+      console.info("DJI liveshare status", payload);
+    };
 
     fetch(`${apiBaseUrl}/api/v1/dji/pilot/jsbridge-config`)
       .then((response) => {
@@ -966,6 +976,29 @@ function PilotPage() {
         setError("O módulo MQTT não confirmou ligação. WS/TSA não serão iniciados.");
         return;
       }
+
+      setStep("liveshare", "running", "A carregar modulo DJI liveshare.");
+      const liveshareLoaded = parseConnectState(
+        window.djiBridge?.platformIsComponentLoaded?.("liveshare"),
+      );
+      if (!liveshareLoaded) {
+        const liveshareResult = bridgeCall("Liveshare module", (bridge) => {
+          if (!bridge.platformLoadComponent) {
+            throw new Error("Metodo JSBridge indisponivel: platformLoadComponent");
+          }
+          return bridge.platformLoadComponent(
+            "liveshare",
+            JSON.stringify({
+              videoPublishType: "video-on-demand",
+              statusCallback: "liveStatusCallback",
+            }),
+          );
+        });
+        if (liveshareResult.code !== 0) {
+          throw new Error(liveshareResult.message ?? "Falha no modulo liveshare");
+        }
+      }
+      setStep("liveshare", "ok", "Liveshare carregado; a aguardar live_capacity/live_status.");
 
       const gatewaySn =
         parseBridgeData<string>(window.djiBridge?.platformGetRemoteControllerSN?.()) ?? "--";
