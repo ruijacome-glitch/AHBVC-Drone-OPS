@@ -18,6 +18,26 @@ DJI Pilot 2 remote controllers are modeled as gateways. A Matrice 30T operation
 can have two controllers, so controller identity must remain separate from drone
 identity in telemetry, missions, streams, media, and audit logs.
 
+## SaaS Tenancy Boundary
+
+AHBVC is the initial tenant and operational validation partner. Product code
+must not assume AHBVC names, domains, logos, roles, integrations or retention
+rules. These belong to organisation configuration and seeded tenant data.
+
+All tenant-owned resources require an immutable `organisation_id`, including
+users and memberships, DJI gateways, drones, missions, occurrences, telemetry,
+tracks, streams, shares, media, reports, deliveries, integrations and audit
+events. Organisation scope must be enforced in repositories and service
+boundaries, not supplied freely by browser clients.
+
+Object storage keys, Redis keys, WebSocket channels, MQTT-to-tenant mappings and
+background jobs must carry the same tenant boundary. Cross-tenant access is
+denied by default and covered by automated negative tests.
+
+Platform operators use a distinct administration surface and audit trail. A
+tenant Administrator can manage only its own organisation. Platform support
+access must be explicit, time-limited and audited.
+
 ## Data Model
 
 The initial SQL migration creates:

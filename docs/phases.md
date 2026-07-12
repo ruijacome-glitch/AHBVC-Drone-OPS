@@ -28,6 +28,29 @@ Operational model:
 - A drone can be associated with a different controller over time, but each
   active mission must record the controller/gateway used for that flight.
 
+## SaaS Foundation
+
+This is a cross-cutting foundation that must be completed before broadening the
+product for external customers:
+
+- Treat AHBVC as the first tenant and operational validation partner, not as a
+  hard-coded product identity.
+- Require `organisation_id` ownership and authorization on every tenant-owned
+  record, query, event, object and storage path.
+- Add organisation-specific branding, domains, locale, timezone, retention,
+  integrations and operational settings.
+- Separate platform administration from each organisation's administration.
+- Introduce plans, entitlements, quotas and feature flags without coupling
+  billing logic directly to operational modules.
+- Meter connected drones, users, storage, stream duration, SMS, email, reports
+  and future AI processing.
+- Support tenant-specific DJI, SMTP, SMS, occurrence SaaS and identity provider
+  configuration with secrets stored server-side.
+- Define data export, deletion, retention, backup, restore and tenant offboarding
+  procedures.
+- Add automated tenant-isolation tests before onboarding a second organisation.
+- Keep development, demonstration and production environments separate.
+
 ## Phase 3
 
 Next work after hardware is connected:
