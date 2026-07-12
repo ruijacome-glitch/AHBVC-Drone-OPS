@@ -59,6 +59,20 @@ class Settings(BaseSettings):
     s3_bucket: str = "uas-media"
     s3_endpoint_url: str = "http://minio:9000"
     s3_public_endpoint: str = "https://storage.uas.ahbvc.org.pt"
+    minio_root_user: str = "uasminio"
+    minio_root_password: str = "change-me-minio"
+    s3_access_key: str | None = None
+    s3_secret_key: str | None = None
+    gotenberg_url: str = "http://gotenberg:3000"
+
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_from_email: str | None = None
+    smtp_from_name: str = "AHBVC UAS Platform"
+    smtp_start_tls: bool = True
+    smtp_use_tls: bool = False
 
     @cached_property
     def cors_origins(self) -> list[str]:

@@ -15,7 +15,10 @@ dependencies = [
   "structlog>=24.4.0",
   "httpx>=0.27.0",
   "paho-mqtt>=2.1.0",
-  "email-validator>=2.2.0"
+  "email-validator>=2.2.0",
+  "aiosmtplib>=3.0.2",
+  "boto3>=1.35.0",
+  "jinja2>=3.1.4"
 ]
 
 [project.optional-dependencies]

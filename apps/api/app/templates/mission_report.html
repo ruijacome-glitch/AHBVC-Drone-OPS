@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="pt">
+<head>
+  <meta charset="utf-8">
+  <style>
+    @page { size: A4; margin: 17mm 16mm 18mm; }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: #172033; font-family: Arial, sans-serif; font-size: 10.5pt; line-height: 1.45; }
+    header { display: flex; align-items: center; gap: 14px; padding-bottom: 14px; border-bottom: 3px solid #c8102e; }
+    header img { width: 62px; height: 62px; object-fit: contain; }
+    header h1 { margin: 2px 0 0; font-size: 20pt; }
+    header p { margin: 0; color: #687386; font-size: 9pt; text-transform: uppercase; }
+    .meta { display: grid; grid-template-columns: repeat(2, 1fr); gap: 9px; margin: 18px 0; }
+    .item { padding: 10px; border: 1px solid #d9dee7; border-radius: 4px; }
+    .item span { display: block; color: #687386; font-size: 8pt; text-transform: uppercase; }
+    .item strong { display: block; margin-top: 3px; }
+    h2 { margin: 20px 0 8px; font-size: 13pt; color: #9b1026; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 8px; border: 1px solid #d9dee7; text-align: left; }
+    th { width: 38%; background: #f3f5f8; }
+    footer { position: fixed; right: 0; bottom: -10mm; left: 0; color: #687386; font-size: 8pt; text-align: center; }
+  </style>
+</head>
+<body>
+  <header>
+    {% if logo_available %}<img src="ahbvc.png" alt="AHBVC">{% endif %}
+    <div><p>Bombeiros Voluntários de Cascais</p><h1>Relatório de Missão UAS</h1></div>
+  </header>
+  <section class="meta">
+    <div class="item"><span>Missão</span><strong>{{ report.mission_id }}</strong></div>
+    <div class="item"><span>Estado</span><strong>{{ report.status }}</strong></div>
+    <div class="item"><span>Ocorrência</span><strong>{{ report.occurrence_code or 'Não associada' }} — {{ report.occurrence_title or '' }}</strong></div>
+    <div class="item"><span>Piloto</span><strong>{{ report.pilot_name or 'Não registado' }}</strong></div>
+  </section>
+  <h2>Recursos</h2>
+  <table>
+    <tr><th>Drone</th><td>{{ report.drone_serial or 'Não registado' }}</td></tr>
+    <tr><th>Comando</th><td>{{ report.controller_serial or 'Não registado' }}</td></tr>
+    <tr><th>Início</th><td>{{ report.started_at or 'Não iniciado' }}</td></tr>
+    <tr><th>Fim</th><td>{{ report.ended_at or 'Em curso' }}</td></tr>
+  </table>
+  <h2>Resumo de telemetria</h2>
+  <table>
+    <tr><th>Pontos registados</th><td>{{ report.telemetry_points }}</td></tr>
+    <tr><th>Altitude máxima</th><td>{{ report.max_altitude_m or 0 }} m</td></tr>
+    <tr><th>Velocidade máxima</th><td>{{ report.max_speed_mps or 0 }} m/s</td></tr>
+    <tr><th>Bateria mínima</th><td>{{ report.min_battery_percent if report.min_battery_percent is not none else '—' }}%</td></tr>
+  </table>
+  <footer>Documento gerado pela UAS Platform · {{ report.generated_at }}</footer>
+</body>
+</html>

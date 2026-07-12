@@ -148,9 +148,29 @@ services:
       - edge
       - internal
 
+  gotenberg:
+    image: gotenberg/gotenberg:8.32.0-chromium
+    restart: unless-stopped
+    command:
+      - gotenberg
+      - --api-timeout=60s
+      - --api-body-limit=25MB
+      - --chromium-disable-javascript=true
+      - --chromium-deny-public-ips=true
+      - --chromium-deny-private-ips=true
+      - --gotenberg-hide-banner=true
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://127.0.0.1:3000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    networks:
+      - internal
+
   api:
     build:
-      context: ./apps/api
+      context: .
+      dockerfile: apps/api/Dockerfile
     restart: unless-stopped
     env_file:
       - path: .env
@@ -161,6 +181,10 @@ services:
       redis:
         condition: service_healthy
       emqx:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      gotenberg:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3)"]
