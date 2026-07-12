@@ -64,6 +64,12 @@ External Stream Sharing:
 
 - Generate one read-only invitation for all active drone streams associated
   with an occurrence or mission, with optional selection of individual streams.
+- Configure each invitation with granular access to live video, multistream,
+  live map, basic drone status, live tracks, operational markers, media markers,
+  media previews, thermal overlays, timeline and historical tracks.
+- Provide safe presets: Video only, Video and live map, Operational view, and
+  Custom. Original media downloads and historical data remain disabled by
+  default.
 - Share the invitation as a QR code, by email, or by SMS.
 - Use an opaque, expiring and revocable token; store only its hash.
 - Exchange the invitation token for a short-lived viewer session and remove it

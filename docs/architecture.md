@@ -77,8 +77,9 @@ SameSite viewer session. Only the token hash is persisted.
 
 Future persistence should include:
 
-- `stream_shares`: organisation, occurrence, mission, scope, token hash,
-  expiration, revocation, creator and audit timestamps.
+- `stream_shares`: organisation, occurrence, mission, scope, explicit
+  capability set, token hash, validity, expiration, revocation, optional viewer
+  limit, creator and audit timestamps.
 - `stream_share_items`: optional explicit stream selection when the share does
   not include all streams in the mission or occurrence.
 - `share_deliveries`: channel, masked recipient, delivery state, provider
@@ -89,6 +90,11 @@ hook. A valid viewer session may read only the selected stream paths and cannot
 publish, enumerate unrelated paths or call platform management APIs. Apply rate
 limits, expiry checks and revocation on every session exchange and stream
 authorization decision.
+
+Map, telemetry, media and timeline endpoints must enforce the same explicit
+capability set. Interface visibility alone is insufficient. New or unknown
+capabilities are denied, and adding a drone or media item to a mission must not
+expand a share beyond its configured dynamic or explicit scope.
 
 QR generation is local and contains the same invitation URL. Email uses the
 existing SMTP module. SMS is accessed through a provider-neutral interface;
