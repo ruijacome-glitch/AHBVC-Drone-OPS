@@ -486,6 +486,7 @@ function TelemetryCharts({ points }: { points: Telemetry[] }) {
     { label: "Velocidade (m/s)", color: "#2563eb", values: ordered.map((point) => point.speed_mps) },
     { label: "Bateria (%)", color: "#15803d", values: ordered.map((point) => point.battery_percent) },
     { label: "Heading (graus)", color: "#9333ea", values: ordered.map((point) => point.heading_deg) },
+    { label: "Yaw (graus)", color: "#0891b2", values: ordered.map((point) => point.yaw_deg ?? null) },
     { label: "Pitch / Roll (graus)", color: "#ea580c", values: ordered.map((point) => {
       if (point.pitch_deg == null && point.roll_deg == null) return null;
       return point.pitch_deg ?? point.roll_deg ?? null;
@@ -504,11 +505,34 @@ function TelemetryCharts({ points }: { points: Telemetry[] }) {
       {ordered.length === 0 ? (
         <p className="empty-state">Não existem pontos de telemetria associados a este voo.</p>
       ) : (
-        <div className="chart-grid">
-          {series.map((item) => <TelemetryChart key={item.label} series={item} />)}
-        </div>
+        <>
+          <div className="chart-grid">
+            {series.map((item) => <TelemetryChart key={item.label} series={item} />)}
+          </div>
+          <TelemetryFacts point={ordered[ordered.length - 1]} />
+        </>
       )}
     </section>
+  );
+}
+
+function TelemetryFacts({ point }: { point: Telemetry }) {
+  const facts = [
+    ["Estado GPS", point.gps_status],
+    ["Estado RTK", point.rtk_status],
+    ["Payload activo", point.active_payload],
+    ["Modo de voo", point.flight_mode],
+    ["Qualidade da ligação", point.link_quality],
+  ];
+  return (
+    <div className="telemetry-facts" aria-label="Estados de telemetria">
+      {facts.map(([label, value]) => (
+        <div key={label}>
+          <span>{label}</span>
+          <strong>{value ?? "--"}</strong>
+        </div>
+      ))}
+    </div>
   );
 }
 

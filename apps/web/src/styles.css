@@ -309,6 +309,33 @@ h1 {
   text-align: center;
 }
 
+.telemetry-facts {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.telemetry-facts div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.telemetry-facts span {
+  color: var(--color-muted);
+  font-size: 0.78rem;
+}
+
+.telemetry-facts strong {
+  overflow-wrap: anywhere;
+  font-size: 0.85rem;
+}
+
 .map-panel {
   overflow: hidden;
   min-height: 520px;
@@ -617,7 +644,8 @@ h1 {
   .pilot-status-grid,
   .ops-grid,
   .history-layout,
-  .chart-grid {
+  .chart-grid,
+  .telemetry-facts {
     grid-template-columns: 1fr;
   }
 
