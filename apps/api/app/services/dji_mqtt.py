@@ -4,6 +4,7 @@ import json
 import logging
 import asyncio
 import threading
+from uuid import uuid4
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
@@ -112,6 +113,27 @@ class DjiMqttConsumer:
                     for sn, device in self._state.devices.items()
                 },
             }
+
+    def publish_service(self, gateway_sn: str, method: str, data: dict[str, Any]) -> dict[str, str]:
+        """Publish an official DJI service envelope to a gateway."""
+        client = self._client
+        if client is None or not self._state.connected:
+            raise RuntimeError("DJI MQTT consumer is not connected")
+        tid = str(uuid4())
+        bid = str(uuid4())
+        payload = {
+            "tid": tid,
+            "bid": bid,
+            "timestamp": int(datetime.now(timezone.utc).timestamp() * 1000),
+            "method": method,
+            "data": data,
+        }
+        topic = f"thing/product/{gateway_sn}/services"
+        result = client.publish(topic, json.dumps(payload), qos=1)
+        if result.rc != mqtt.MQTT_ERR_SUCCESS:
+            raise RuntimeError(f"Unable to publish DJI service: {result.rc}")
+        logger.info("Published DJI service %s to gateway %s", method, gateway_sn)
+        return {"topic": topic, "tid": tid, "bid": bid}
 
     def _on_connect(
         self,

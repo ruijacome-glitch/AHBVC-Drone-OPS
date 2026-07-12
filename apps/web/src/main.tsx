@@ -209,6 +209,7 @@ function useHostMode() {
 function App() {
   const mode = useHostMode();
   if (mode === "pilot") return <PilotPage />;
+  if (window.location.pathname === "/stream") return <LiveStreamPage />;
   return window.location.pathname === "/history" ? <FlightHistoryPage /> : <OpsDashboard />;
 }
 
@@ -305,6 +306,9 @@ function OpsDashboard() {
           </a>
           <a className="nav-link" href="/history">
             Historico de voo
+          </a>
+          <a className="nav-link" href="/stream">
+            Livestream
           </a>
           <a className="nav-link" href="/pilot">
             Pilot 2
@@ -439,6 +443,7 @@ function FlightHistoryPage() {
         <nav>
           <a className="nav-link" href="/">Operacoes</a>
           <a className="nav-link active" href="/history">Historico de voo</a>
+          <a className="nav-link" href="/stream">Livestream</a>
           <a className="nav-link" href="/pilot">Pilot 2</a>
         </nav>
       </aside>
@@ -472,6 +477,73 @@ function FlightHistoryPage() {
           </div>
         </section>
         {selectedTrack ? <TelemetryCharts points={selectedTelemetry} /> : null}
+      </section>
+    </main>
+  );
+}
+
+function LiveStreamPage() {
+  const gatewaySn = "4LFCM3M006Q6DR";
+  const [videoId, setVideoId] = React.useState("");
+  const [token, setToken] = React.useState("");
+  const [quality, setQuality] = React.useState("0");
+  const [streaming, setStreaming] = React.useState(false);
+  const [message, setMessage] = React.useState<string | null>(null);
+  const streamUrl = `https://stream.uas.ahbvc.org.pt/live/${gatewaySn}`;
+  const hlsUrl = `${streamUrl}/index.m3u8`;
+
+  async function sendCommand(action: "start" | "stop") {
+    if (!videoId.trim()) {
+      setMessage("Indica o video_id oficial da câmara antes de iniciar.");
+      return;
+    }
+    const response = await fetch(`${apiBaseUrl}/api/v1/livestreams/${action}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-auth-token": token },
+      body: JSON.stringify({
+        gateway_sn: gatewaySn,
+        video_id: videoId.trim(),
+        ...(action === "start" ? { video_quality: Number(quality) } : {}),
+      }),
+    });
+    const result = (await response.json()) as { detail?: string; status?: string };
+    if (!response.ok) {
+      setMessage(result.detail ?? "Não foi possível enviar o comando DJI.");
+      return;
+    }
+    setStreaming(action === "start");
+    setMessage(action === "start" ? "Comando enviado. Aguarda o Pilot 2 iniciar o stream." : "Comando de paragem enviado.");
+  }
+
+  return (
+    <main className="app-shell">
+      <aside className="sidebar" aria-label="Navegacao principal">
+        <div className="brand-lockup"><div className="brand-mark">UAS</div><div><strong>UAS Platform</strong><span>AHBVC Drone OPS</span></div></div>
+        <nav>
+          <a className="nav-link" href="/">Operacoes</a>
+          <a className="nav-link" href="/history">Historico de voo</a>
+          <a className="nav-link active" href="/stream">Livestream</a>
+          <a className="nav-link" href="/pilot">Pilot 2</a>
+        </nav>
+      </aside>
+      <section className="workspace">
+        <header className="topbar">
+          <div><p className="eyebrow">Media operacional</p><h1>Livestream DJI</h1></div>
+          <span className={`status-pill ${streaming ? "online" : "offline"}`}>{streaming ? "Comando activo" : "Parado"}</span>
+        </header>
+        <section className="stream-layout">
+          <div className="panel stream-controls">
+            <div className="panel-heading"><Radio aria-hidden="true" size={20} /><h2>Controlar transmissão</h2></div>
+            <label>Gateway SN<input value={gatewaySn} readOnly /></label>
+            <label>Video ID DJI<input value={videoId} onChange={(event) => setVideoId(event.target.value)} placeholder="SN/camera_index/video_index" /></label>
+            <label>Qualidade<select value={quality} onChange={(event) => setQuality(event.target.value)}><option value="0">Adaptativa</option><option value="1">Fluida</option><option value="2">SD</option><option value="3">HD</option><option value="4">UHD</option></select></label>
+            <label>Token da plataforma<input type="password" value={token} onChange={(event) => setToken(event.target.value)} /></label>
+            <div className="stream-actions"><button className="primary-action" type="button" onClick={() => void sendCommand("start")}>Iniciar stream</button><button className="secondary-action" type="button" onClick={() => void sendCommand("stop")}>Parar</button></div>
+            {message ? <p className="stream-message">{message}</p> : null}
+            <div className="stream-links"><span>WebRTC: <a href={streamUrl} target="_blank" rel="noreferrer">abrir player</a></span><span>HLS: <a href={hlsUrl} target="_blank" rel="noreferrer">abrir playlist</a></span></div>
+          </div>
+          <div className="stream-view panel"><iframe title="DJI WebRTC livestream" src={streamUrl} allow="autoplay; fullscreen" /></div>
+        </section>
       </section>
     </main>
   );
