@@ -98,28 +98,3 @@ Occurrences:
   do not invent or duplicate the external source contract.
 - Associate drone, controller, pilot, stream, telemetry, photos, videos, thermal
   analysis and timeline.
-
-## Phase 8
-
-Operational Communications:
-
-- Add a mission channel between the command post and authenticated pilots.
-- Render the pilot channel inside the existing DJI Pilot 2 H5/WebView.
-- Use the platform WebSocket for bidirectional delivery; this does not require
-  a DJI messaging endpoint.
-- Persist messages with sender, mission, timestamp, priority and delivery/read
-  state.
-- Queue messages during temporary connectivity loss and synchronize after
-  reconnection without duplicating them.
-- Support operational text first; consider photographs, map points and short
-  predefined status responses only after the text workflow is validated.
-- Show high-priority messages prominently and require explicit acknowledgement.
-- Keep a mission communication transcript for audit and reporting, subject to
-  retention and data-protection policy.
-
-Safety boundary:
-
-- WebView chat is available only while the Cloud Platform page and network
-  connection are active.
-- It must not replace radio communications or be the sole channel for
-  time-critical flight-safety commands.

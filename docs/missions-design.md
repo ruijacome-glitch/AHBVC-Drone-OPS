@@ -85,34 +85,8 @@ create a new report version instead of overwriting the previous document.
 - `mission_notes`: timestamped operational notes.
 - `mission_reports`: report version and approval metadata, linked to
   `report_documents`.
-- `mission_messages`: immutable operational messages and acknowledgements
-  exchanged between the command post and authenticated mission participants.
 - partial unique indexes preventing multiple active missions for the same drone
   or controller.
-
-## Operational communications
-
-Each mission has a dedicated communication channel. Membership is derived from
-mission assignments and the active `pilot_session`; pilots do not enter a room
-code or identify themselves manually. Messages contain a client-generated UUID
-for idempotency, sender, mission, priority, body, creation time, delivery time
-and acknowledgement time.
-
-The command post uses the normal web application. The pilot uses a compact view
-inside the existing DJI Pilot 2 H5/WebView. Both connect to the FastAPI
-WebSocket service. Redis may distribute live events between API instances,
-while PostgreSQL remains the durable source of truth.
-
-Initial message types:
-
-- normal operational message;
-- priority message requiring acknowledgement;
-- predefined pilot response such as `received`, `unable`, `returning` or
-  `landing`.
-
-Messages are retained in the mission timeline and may be included in the final
-report. The channel is supplementary and must not be treated as a replacement
-for radio or as the only route for flight-safety instructions.
 
 ## Delivery sequence
 
@@ -123,4 +97,3 @@ for radio or as the only route for flight-safety instructions.
 5. Add mission timeline, checklist and operational notes.
 6. Generate and approve versioned mission reports.
 7. Add multi-crew assignments and advanced incident workflows.
-8. Add the audited mission communication channel and Pilot 2 compact view.
