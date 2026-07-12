@@ -101,6 +101,8 @@ services:
   mediamtx:
     image: bluenviron/mediamtx:1.9.3
     restart: unless-stopped
+    environment:
+      MTX_WEBRTCADDITIONALHOSTS: ${WEBRTC_ADDITIONAL_HOSTS:-stream.uas.ahbvc.org.pt}
     healthcheck:
       test: ["CMD", "/mediamtx", "--version"]
       interval: 15s
@@ -116,6 +118,8 @@ services:
       - traefik.http.services.stream.loadbalancer.server.port=8889
     ports:
       - "1935:1935"
+      - "8189:8189/udp"
+      - "8189:8189/tcp"
     networks:
       - edge
       - internal
