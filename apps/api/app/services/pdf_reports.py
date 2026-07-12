@@ -1,3 +1,4 @@
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,24 @@ template_environment = Environment(
     loader=FileSystemLoader(APP_DIR / "templates"),
     autoescape=select_autoescape(["html", "xml"]),
 )
+
+
+def format_datetime(value: object, fallback: str) -> str:
+    if value is None:
+        return fallback
+    parsed = value
+    if isinstance(value, str):
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return value
+    if isinstance(parsed, datetime):
+        suffix = " UTC" if parsed.tzinfo is not None else ""
+        return parsed.strftime("%d/%m/%Y %H:%M:%S") + suffix
+    return str(value)
+
+
+template_environment.filters["datetime_pt"] = format_datetime
 
 
 class PdfReportService:

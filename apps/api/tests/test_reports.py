@@ -28,6 +28,8 @@ def test_mission_report_template_escapes_untrusted_values() -> None:
     )
     assert "<script>" not in html
     assert "&lt;script&gt;" in html
+    assert "12/07/2026 12:00:00 UTC" in html
+    assert "position: fixed" not in html
 
 
 def test_generate_report_requires_authentication() -> None:
