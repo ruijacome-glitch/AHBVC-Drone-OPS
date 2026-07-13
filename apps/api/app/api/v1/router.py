@@ -10,6 +10,7 @@ from app.api.v1.routes import (
     livestream,
     operations,
     reports,
+    shares,
     system,
     users,
 )
@@ -34,6 +35,7 @@ api_router.include_router(
 api_router.include_router(map_routes.router)
 api_router.include_router(livestream.router)
 api_router.include_router(reports.router)
+api_router.include_router(shares.router)
 api_router.include_router(operations.router)
 api_router.include_router(dashboard.router, dependencies=[Depends(require_roles(ALL_ROLES))])
 api_router.include_router(equipment.router)
