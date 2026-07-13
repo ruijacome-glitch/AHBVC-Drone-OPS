@@ -24,7 +24,7 @@ class CreateShareRequest(BaseModel):
     gateway_sn: str = Field(min_length=3, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
     video_id: str | None = Field(default=None, max_length=200)
     permissions: set[str] = Field(default_factory=lambda: {"video"})
-    expires_in_hours: int = Field(default=8, ge=1, le=168)
+    expires_in_hours: int | None = Field(default=8, ge=1, le=87600)
     target_type: Literal["stream", "aircraft", "mission"] = "stream"
     gateway_sns: list[str] = Field(default_factory=list, max_length=16)
     video_ids: list[str] = Field(default_factory=list, max_length=64)
@@ -60,15 +60,17 @@ async def create_share_link(
         raise HTTPException(status_code=422, detail="Aircraft serial is required")
     if payload.target_type == "mission" and not payload.mission_id:
         raise HTTPException(status_code=422, detail="Mission is required")
-    if not gateway_sns or not video_ids:
+    if not gateway_sns:
         raise HTTPException(status_code=422, detail="At least one stream source is required")
+    if payload.target_type == "stream" and not video_ids:
+        raise HTTPException(status_code=422, detail="A video source is required for a single-stream link")
     sources = payload.sources or [
         {"gateway_sn": gateway_sn, "video_ids": video_ids}
         for gateway_sn in gateway_sns
     ]
 
     raw_token = token_urlsafe(48)
-    expires_at = datetime.now(timezone.utc) + timedelta(hours=payload.expires_in_hours)
+    expires_at = datetime.now(timezone.utc) + timedelta(hours=payload.expires_in_hours) if payload.expires_in_hours else None
     async with AsyncSessionLocal() as session, session.begin():
         if payload.mission_id:
             mission = await session.execute(
@@ -178,7 +180,7 @@ async def resolve_public_share(token: str) -> dict[str, object]:
                 SET last_accessed_at = now()
                 WHERE token_hash = :token_hash
                   AND revoked_at IS NULL
-                  AND expires_at > now()
+                  AND (expires_at IS NULL OR expires_at > now())
                 RETURNING label, gateway_sn, video_id, permissions, expires_at,
                           target_type, target_config
                 """
