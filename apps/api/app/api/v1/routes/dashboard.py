@@ -84,7 +84,7 @@ async def dashboard_summary(
                       UNION ALL
                       SELECT 'flight' AS activity_type,
                              'Voo registado' AS title,
-                             CASE WHEN ended_at IS NULL
+                             CASE WHEN ft.ended_at IS NULL
                                THEN 'Em curso' ELSE 'Concluído'
                              END AS detail,
                              ft.started_at AS occurred_at,
@@ -96,7 +96,7 @@ async def dashboard_summary(
                       UNION ALL
                       SELECT 'stream' AS activity_type,
                              'Livestream iniciado' AS title,
-                             CASE WHEN status = 'online'
+                             CASE WHEN l.status = 'online'
                                THEN 'Em direto' ELSE 'Terminado'
                              END AS detail,
                              l.started_at AS occurred_at,
