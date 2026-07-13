@@ -113,10 +113,16 @@ async def flight_track_history(
             text(
                 """
                 SELECT ft.id, ft.started_at, ft.ended_at,
+                       d.serial_number AS drone_serial,
+                       COALESCE(d.callsign, d.display_name, d.serial_number) AS drone_callsign,
+                       u.full_name AS pilot_name,
                        ST_NPoints(ft.track) AS point_count,
                        ST_AsGeoJSON(ft.track)::json AS geometry
                 FROM flight_tracks ft
                 JOIN drones d ON d.id = ft.drone_id
+                LEFT JOIN missions m ON m.id = ft.mission_id
+                LEFT JOIN flights f ON f.id = ft.flight_id
+                LEFT JOIN users u ON u.id = COALESCE(f.pilot_id, m.pilot_id)
                 WHERE d.serial_number = :drone_sn
                 ORDER BY ft.started_at DESC
                 LIMIT :limit

@@ -769,6 +769,9 @@ function OpsDashboard() {
 type HistoricalTrack = FlightTrack & {
   id: string;
   point_count: number;
+  drone_serial: string;
+  drone_callsign: string | null;
+  pilot_name: string | null;
 };
 
 function FlightHistoryPage() {
@@ -827,8 +830,9 @@ function FlightHistoryPage() {
                 onClick={() => setSelectedTrack(trackItem)}
               >
                 <strong>{new Date(trackItem.started_at).toLocaleString("pt-PT")}</strong>
-                <span>{trackItem.point_count} pontos GPS</span>
-                <span>{trackItem.ended_at ? "Concluído" : "Em curso"}</span>
+                <span>{trackItem.drone_callsign || trackItem.drone_serial}</span>
+                <span>Piloto: {trackItem.pilot_name || "Não registado"}</span>
+                <span>{trackItem.point_count} pontos GPS · {trackItem.ended_at ? "Concluído" : "Em curso"}</span>
               </button>
             ))}
           </div>
@@ -836,7 +840,7 @@ function FlightHistoryPage() {
             {selectedTrack ? <TelemetryMap history={[]} track={selectedTrack} /> : <div className="map-empty"><MapPin size={28} /><strong>Selecione um voo</strong></div>}
           </div>
         </section>
-        {selectedTrack ? <TelemetryCharts points={selectedTelemetry} /> : null}
+        {selectedTrack ? <><div className="history-equipment-strip"><span><strong>Drone</strong>{selectedTrack.drone_callsign || "Sem indicativo"}<small>{selectedTrack.drone_serial}</small></span><span><strong>Piloto</strong>{selectedTrack.pilot_name || "Não registado"}</span></div><TelemetryCharts points={selectedTelemetry} /></> : null}
       </section>
     </main>
   );
