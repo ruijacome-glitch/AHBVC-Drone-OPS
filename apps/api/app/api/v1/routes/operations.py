@@ -180,6 +180,7 @@ MISSION_SELECT = """
            COUNT(f.id)::int AS flight_count
     FROM missions m
     LEFT JOIN occurrences o ON o.id = m.occurrence_id
+    LEFT JOIN drones d ON d.id = m.drone_id
     LEFT JOIN users u ON u.id = m.pilot_id
     LEFT JOIN flights f ON f.mission_id = m.id
 """
