@@ -610,6 +610,8 @@ type PublicShare = {
   permissions: string[];
   expires_at: string;
   stream_url: string;
+  target_type?: "stream" | "aircraft" | "mission";
+  streams?: Array<{ gateway_sn: string; video_id: string | null; stream_url: string }>;
 };
 
 type ManagedShare = {
@@ -622,6 +624,7 @@ type ManagedShare = {
   revoked_at: string | null;
   created_at: string;
   last_accessed_at: string | null;
+  target_type?: "stream" | "aircraft" | "mission";
 };
 
 function PublicSharePage() {
@@ -639,7 +642,8 @@ function PublicSharePage() {
       .catch((reason) => setError(reason instanceof Error ? reason.message : "Link indisponível."));
   }, [token]);
 
-  return <main className="public-share-page"><motion.section className="public-share-card" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}><header className="auth-brand"><img src="/ahbvc.png" alt="AHBVC" /><div><span>Partilha operacional</span><strong>AirSector</strong></div></header>{error ? <div className="public-share-error"><ShieldAlert size={28} /><h1>Link indisponível</h1><p>{error}</p></div> : share ? <><div className="public-share-heading"><p className="eyebrow">Acesso partilhado</p><h1>{share.label}</h1><span>Expira em {new Date(share.expires_at).toLocaleString("pt-PT")}</span></div>{share.permissions.includes("video") ? <iframe className="public-share-player" title={`Stream ${share.label}`} src={`${share.stream_url}/`} allow="autoplay; fullscreen" /> : <div className="public-share-empty"><Video size={32} /><span>Este link não inclui vídeo.</span></div>}<div className="public-share-permissions">{share.permissions.map((permission) => <span key={permission}><CheckCircle2 size={15} />{permission}</span>)}</div></> : <div className="public-share-loading"><CircleDashed className="spin" size={26} /><span>A validar link seguro...</span></div>}</motion.section></main>;
+  const streams = share?.streams?.length ? share.streams : share ? [{ gateway_sn: share.gateway_sn, video_id: share.video_id, stream_url: share.stream_url }] : [];
+  return <main className="public-share-page"><motion.section className="public-share-card" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}><header className="auth-brand"><img src="/ahbvc.png" alt="AHBVC" /><div><span>Partilha operacional</span><strong>AirSector</strong></div></header>{error ? <div className="public-share-error"><ShieldAlert size={28} /><h1>Link indisponível</h1><p>{error}</p></div> : share ? <><div className="public-share-heading"><p className="eyebrow">Acesso partilhado</p><h1>{share.label}</h1><span>Expira em {new Date(share.expires_at).toLocaleString("pt-PT")}</span></div>{share.permissions.includes("video") ? <div className={`public-share-grid ${streams.length > 1 ? "multi" : ""}`}>{streams.map((stream, index) => <div className="public-share-source" key={`${stream.gateway_sn}-${stream.video_id ?? index}`}><span>Gateway {stream.gateway_sn}</span><iframe className="public-share-player" title={`Stream ${share.label} ${index + 1}`} src={`${stream.stream_url}/`} allow="autoplay; fullscreen" /></div>)}</div> : <div className="public-share-empty"><Video size={32} /><span>Este link não inclui vídeo.</span></div>}<div className="public-share-permissions">{share.permissions.map((permission) => <span key={permission}><CheckCircle2 size={15} />{permission}</span>)}</div></> : <div className="public-share-loading"><CircleDashed className="spin" size={26} /><span>A validar link seguro...</span></div>}</motion.section></main>;
 }
 
 function ActivateAccountPage() {
@@ -957,6 +961,10 @@ function LiveStreamPage() {
   const [sharePermissions, setSharePermissions] = React.useState<string[]>(["video"]);
   const [shareUrl, setShareUrl] = React.useState<string | null>(null);
   const [shareSaving, setShareSaving] = React.useState(false);
+  const [shareTarget, setShareTarget] = React.useState<"stream" | "aircraft" | "mission">("stream");
+  const [selectedAircraftSn, setSelectedAircraftSn] = React.useState("");
+  const [selectedMissionId, setSelectedMissionId] = React.useState("");
+  const [missions, setMissions] = React.useState<OperationalMission[]>([]);
   const [qrDataUrl, setQrDataUrl] = React.useState<string | null>(null);
   const [shares, setShares] = React.useState<ManagedShare[]>([]);
   const [sharesLoading, setSharesLoading] = React.useState(false);
@@ -973,6 +981,7 @@ function LiveStreamPage() {
       const result = (await optionsResponse.json()) as { options: LivestreamOption[] };
       setOptions(result.options);
       setSelectedVideoId((current) => current || result.options[0]?.video_id || "");
+      setSelectedAircraftSn((current) => current || result.options[0]?.aircraft_sn || "");
       setMessage(result.options.length ? null : "A aguardar as câmaras anunciadas pelo DJI Pilot 2.");
     } catch {
       setMessage("Não foi possível obter as câmaras disponíveis.");
@@ -1002,6 +1011,13 @@ function LiveStreamPage() {
   }, [canControl]);
 
   React.useEffect(() => { void loadShares(); }, [loadShares]);
+
+  React.useEffect(() => {
+    if (!canControl) return;
+    void authenticatedFetch("/api/v1/operations/missions", { cache: "no-store" }).then(async (response) => {
+      if (response.ok) setMissions((await response.json()) as OperationalMission[]);
+    });
+  }, [canControl]);
 
   React.useEffect(() => {
     if (!shareUrl) { setQrDataUrl(null); return; }
@@ -1042,10 +1058,14 @@ function LiveStreamPage() {
     setShareSaving(true);
     setMessage(null);
     try {
+      const targetOptions = shareTarget === "aircraft" ? options.filter((option) => option.aircraft_sn === selectedAircraftSn) : shareTarget === "mission" ? options : [selectedOption];
+      const gatewaySns = [...new Set(targetOptions.map((option) => option.gateway_sn))];
+      const videoIds = [...new Set(targetOptions.map((option) => option.video_id))];
+      const sources = gatewaySns.map((gatewaySn) => ({ gateway_sn: gatewaySn, video_ids: [...new Set(targetOptions.filter((option) => option.gateway_sn === gatewaySn).map((option) => option.video_id))] }));
       const response = await authenticatedFetch("/api/v1/stream-shares", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ label: shareLabel, gateway_sn: selectedOption.gateway_sn, video_id: selectedOption.video_id, permissions: sharePermissions, expires_in_hours: Number(shareExpiry) }),
+        body: JSON.stringify({ label: shareLabel, gateway_sn: selectedOption.gateway_sn, video_id: selectedOption.video_id, permissions: sharePermissions, expires_in_hours: Number(shareExpiry), target_type: shareTarget, gateway_sns: gatewaySns, video_ids: videoIds, sources, aircraft_sn: shareTarget === "aircraft" ? selectedAircraftSn : null, mission_id: shareTarget === "mission" ? selectedMissionId : null }),
       });
       const result = (await response.json().catch(() => ({}))) as { public_url?: string; detail?: string };
       if (!response.ok) throw new Error(result.detail ?? "Não foi possível criar o link.");
@@ -1111,6 +1131,7 @@ function LiveStreamPage() {
           <div className="stream-view panel">{gatewaySn ? <iframe key={streamUrl} title="DJI WebRTC livestream" src={streamUrl} allow="autoplay; fullscreen" /> : <div className="stream-placeholder"><Radio size={40} /><strong>Sem fonte disponível</strong><span>A aguardar uma câmara anunciada pelo Pilot 2.</span></div>}</div>
         </section>
         {canControl ? <>
+          <section className="panel share-target-panel"><div className="panel-heading"><Share2 size={20} /><div><h2>Alvo da partilha</h2><span>Escolha uma câmara, uma aeronave completa ou uma missão multistream.</span></div></div><div className="share-target-grid"><label>Tipo<select value={shareTarget} onChange={(event) => setShareTarget(event.target.value as "stream" | "aircraft" | "mission")}><option value="stream">Uma câmara</option><option value="aircraft">Todos os streams da aeronave</option><option value="mission">Missão / multistream</option></select></label>{shareTarget === "aircraft" ? <label>Aeronave<select value={selectedAircraftSn} onChange={(event) => setSelectedAircraftSn(event.target.value)}>{[...new Set(options.map((option) => option.aircraft_sn))].map((aircraft) => <option key={aircraft} value={aircraft}>{aircraft}</option>)}</select></label> : null}{shareTarget === "mission" ? <label>Missão<select value={selectedMissionId} onChange={(event) => setSelectedMissionId(event.target.value)}><option value="">Selecione a missão</option>{missions.map((mission) => <option key={mission.id} value={mission.id}>{mission.title}</option>)}</select></label> : null}</div><p className="share-target-hint">{shareTarget === "stream" ? "Partilha apenas a câmara seleccionada." : shareTarget === "aircraft" ? "Inclui todas as câmaras anunciadas para a aeronave seleccionada." : "Inclui os gateways e streams DJI actualmente anunciados para a missão."}</p></section>
           <form className="panel share-panel" onSubmit={createShareLink}><div className="panel-heading"><Share2 size={20} /><div><h2>Partilhar stream</h2><span>Crie um link temporário sem expor credenciais DJI.</span></div></div><div className="share-form-grid"><label>Nome da partilha<input value={shareLabel} onChange={(event) => setShareLabel(event.target.value)} required /></label><label>Expira<select value={shareExpiry} onChange={(event) => setShareExpiry(event.target.value)}><option value="1">1 hora</option><option value="8">8 horas</option><option value="24">24 horas</option><option value="72">3 dias</option><option value="168">7 dias</option></select></label></div><fieldset className="share-permissions"><legend>Permissões do link</legend><label><input type="checkbox" checked disabled />Vídeo ao vivo</label>{["map", "telemetry", "markers", "history"].map((permission) => <label key={permission}><input type="checkbox" checked={sharePermissions.includes(permission)} onChange={() => toggleSharePermission(permission)} />{permission === "map" ? "Mapa" : permission === "telemetry" ? "Telemetria" : permission === "markers" ? "Marcadores" : "Histórico"}</label>)}</fieldset><button className="primary-action" type="submit" disabled={!selectedOption || shareSaving}><Share2 size={17} />{shareSaving ? "A criar..." : "Criar link"}</button>{shareUrl ? <div className="share-result"><div className="share-link-fields"><input readOnly value={shareUrl} aria-label="Link público criado" /><div className="share-link-actions"><button className="icon-action" type="button" title="Copiar link" aria-label="Copiar link" onClick={() => void navigator.clipboard.writeText(shareUrl)}><Clipboard size={17} /></button><a href={shareUrl} target="_blank" rel="noreferrer">Abrir</a></div></div>{qrDataUrl ? <div className="share-qr"><img src={qrDataUrl} alt="QR Code do link de partilha" /><span>Leia para abrir rapidamente</span></div> : null}</div> : null}</form>
           <section className="panel share-history-panel"><div className="panel-heading"><History size={20} /><div><h2>Links emitidos</h2><span>Revogue acessos que já não devem estar disponíveis.</span></div><button className="icon-action" type="button" onClick={() => void loadShares()} aria-label="Atualizar links" title="Atualizar links"><RefreshCw size={18} /></button></div>{sharesLoading ? <p className="share-history-empty">A carregar links...</p> : shares.length === 0 ? <p className="share-history-empty">Ainda não foram criados links de partilha.</p> : <div className="share-history-list">{shares.map((share) => { const expired = new Date(share.expires_at).getTime() <= Date.now(); const status = share.revoked_at ? "Revogado" : expired ? "Expirado" : "Activo"; return <div className="share-history-row" key={share.id}><div><strong>{share.label}</strong><span>{share.gateway_sn} · {share.permissions.join(", ")}</span><small>Expira {new Date(share.expires_at).toLocaleString("pt-PT")}{share.last_accessed_at ? ` · último acesso ${new Date(share.last_accessed_at).toLocaleString("pt-PT")}` : ""}</small></div><div className="share-history-actions"><span className={`share-status ${status === "Activo" ? "active" : "inactive"}`}>{status}</span>{!share.revoked_at && !expired ? <button className="icon-action danger-action" type="button" title="Revogar link" aria-label={`Revogar ${share.label}`} disabled={revokingShareId === share.id} onClick={() => void revokeShareLink(share.id)}><Ban size={17} /></button> : null}</div></div>; })}</div>}</section>
         </> : null}

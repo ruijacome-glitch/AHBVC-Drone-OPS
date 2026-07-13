@@ -4,6 +4,6 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 docker compose exec -T postgres sh -c \
-  'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -f /docker-entrypoint-initdb.d/008_stream_share_links.sql'
+  'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -f /docker-entrypoint-initdb.d/008_stream_share_links.sql -f /docker-entrypoint-initdb.d/009_stream_share_targets.sql'
 
-echo "Stream share links migration applied."
+echo "Stream share links and target migration applied."

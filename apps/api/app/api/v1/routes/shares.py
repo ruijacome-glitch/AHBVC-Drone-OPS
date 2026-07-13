@@ -2,7 +2,7 @@ import json
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 from secrets import token_urlsafe
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -25,6 +25,12 @@ class CreateShareRequest(BaseModel):
     video_id: str | None = Field(default=None, max_length=200)
     permissions: set[str] = Field(default_factory=lambda: {"video"})
     expires_in_hours: int = Field(default=8, ge=1, le=168)
+    target_type: Literal["stream", "aircraft", "mission"] = "stream"
+    gateway_sns: list[str] = Field(default_factory=list, max_length=16)
+    video_ids: list[str] = Field(default_factory=list, max_length=64)
+    sources: list[dict[str, object]] = Field(default_factory=list, max_length=16)
+    aircraft_sn: str | None = Field(default=None, max_length=64)
+    mission_id: UUID | None = None
 
 
 def _hash_token(token: str) -> str:
@@ -48,18 +54,45 @@ async def create_share_link(
     if user.organisation_id is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User has no organisation")
 
+    gateway_sns = list(dict.fromkeys(payload.gateway_sns or [payload.gateway_sn]))
+    video_ids = list(dict.fromkeys(payload.video_ids or ([payload.video_id] if payload.video_id else [])))
+    if payload.target_type == "aircraft" and not payload.aircraft_sn:
+        raise HTTPException(status_code=422, detail="Aircraft serial is required")
+    if payload.target_type == "mission" and not payload.mission_id:
+        raise HTTPException(status_code=422, detail="Mission is required")
+    if not gateway_sns or not video_ids:
+        raise HTTPException(status_code=422, detail="At least one stream source is required")
+    sources = payload.sources or [
+        {"gateway_sn": gateway_sn, "video_ids": video_ids}
+        for gateway_sn in gateway_sns
+    ]
+
     raw_token = token_urlsafe(48)
     expires_at = datetime.now(timezone.utc) + timedelta(hours=payload.expires_in_hours)
     async with AsyncSessionLocal() as session, session.begin():
+        if payload.mission_id:
+            mission = await session.execute(
+                text(
+                    """
+                    SELECT id FROM missions
+                    WHERE id = :mission_id
+                      AND organisation_id = CAST(:organisation_id AS uuid)
+                    """
+                ),
+                {"mission_id": payload.mission_id, "organisation_id": user.organisation_id},
+            )
+            if mission.scalar_one_or_none() is None:
+                raise HTTPException(status_code=404, detail="Mission not found")
         result = await session.execute(
             text(
                 """
                 INSERT INTO stream_share_links (
                   organisation_id, created_by, token_hash, label, gateway_sn,
-                  video_id, permissions, expires_at
+                  video_id, permissions, expires_at, target_type, target_config
                 ) VALUES (
                   :organisation_id, :created_by, :token_hash, :label, :gateway_sn,
-                  :video_id, CAST(:permissions AS jsonb), :expires_at
+                  :video_id, CAST(:permissions AS jsonb), :expires_at, :target_type,
+                  CAST(:target_config AS jsonb)
                 )
                 RETURNING id, label, gateway_sn, video_id, permissions, expires_at
                 """
@@ -73,6 +106,14 @@ async def create_share_link(
                 "video_id": payload.video_id,
                 "permissions": json.dumps(sorted(payload.permissions)),
                 "expires_at": expires_at,
+                "target_type": payload.target_type,
+                "target_config": json.dumps({
+                    "gateway_sns": gateway_sns,
+                    "video_ids": video_ids,
+                    "sources": sources,
+                    "aircraft_sn": payload.aircraft_sn,
+                    "mission_id": str(payload.mission_id) if payload.mission_id else None,
+                }),
             },
         )
         row = result.mappings().one()
@@ -88,7 +129,8 @@ async def list_share_links(
             text(
                 """
                 SELECT id, label, gateway_sn, video_id, permissions, expires_at,
-                       revoked_at, created_at, last_accessed_at
+                       revoked_at, created_at, last_accessed_at, target_type,
+                       target_config
                 FROM stream_share_links
                 WHERE organisation_id = CAST(:organisation_id AS uuid)
                 ORDER BY created_at DESC
@@ -137,7 +179,8 @@ async def resolve_public_share(token: str) -> dict[str, object]:
                 WHERE token_hash = :token_hash
                   AND revoked_at IS NULL
                   AND expires_at > now()
-                RETURNING label, gateway_sn, video_id, permissions, expires_at
+                RETURNING label, gateway_sn, video_id, permissions, expires_at,
+                          target_type, target_config
                 """
             ),
             {"token_hash": _hash_token(token)},
@@ -145,7 +188,32 @@ async def resolve_public_share(token: str) -> dict[str, object]:
         row = result.mappings().first()
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Share link expired or revoked")
+    target_config = row.get("target_config") or {}
+    configured_sources = target_config.get("sources")
+    if isinstance(configured_sources, list) and configured_sources:
+        streams = [
+            {
+                "gateway_sn": source.get("gateway_sn"),
+                "video_id": video_id,
+                "stream_url": f"https://{settings.stream_public_host}/live/{source.get('gateway_sn')}",
+            }
+            for source in configured_sources if isinstance(source, dict)
+            for video_id in (source.get("video_ids") or [None])
+        ]
+    else:
+        gateway_sns = target_config.get("gateway_sns") or [row["gateway_sn"]]
+        video_ids = target_config.get("video_ids") or ([row["video_id"]] if row["video_id"] else [None])
+        streams = [
+            {
+                "gateway_sn": gateway_sn,
+                "video_id": video_id,
+                "stream_url": f"https://{settings.stream_public_host}/live/{gateway_sn}",
+            }
+            for gateway_sn in gateway_sns
+            for video_id in video_ids
+        ]
     return {
         **dict(row),
         "stream_url": f"https://{settings.stream_public_host}/live/{row['gateway_sn']}",
+        "streams": streams,
     }

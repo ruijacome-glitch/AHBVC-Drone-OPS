@@ -913,6 +913,11 @@ h1 {
 }
 
 .share-panel { display: grid; gap: 14px; margin-top: 16px; }
+.share-target-panel { display: grid; gap: 12px; margin-top: 16px; }
+.share-target-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.share-target-grid label { display: grid; gap: 5px; color: var(--color-muted); font-size: 0.84rem; font-weight: 700; }
+.share-target-grid select { min-height: 42px; padding: 9px 10px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-surface); color: var(--color-foreground); }
+.share-target-hint { margin: 0; color: var(--color-muted); font-size: 0.78rem; }
 .share-form-grid { display: grid; grid-template-columns: minmax(0, 1fr) 160px; gap: 12px; }
 .share-form-grid label { display: grid; gap: 5px; color: var(--color-muted); font-size: 0.84rem; font-weight: 700; }
 .share-form-grid input, .share-form-grid select { min-height: 42px; padding: 9px 10px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-surface); color: var(--color-foreground); }
@@ -948,6 +953,10 @@ h1 {
 .public-share-heading h1 { margin: 0; }
 .public-share-heading > span { color: var(--color-muted); font-size: 0.82rem; }
 .public-share-player { display: block; width: 100%; min-height: min(65vh, 560px); border: 0; border-radius: 8px; background: #0f172a; }
+.public-share-grid { display: grid; gap: 14px; }
+.public-share-grid.multi { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.public-share-source { display: grid; gap: 6px; min-width: 0; }
+.public-share-source > span { color: var(--color-muted); font-size: 0.78rem; font-weight: 700; }
 .public-share-permissions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; color: var(--color-muted); font-size: 0.78rem; }
 .public-share-permissions span { display: inline-flex; align-items: center; gap: 5px; padding: 6px 9px; border: 1px solid var(--color-border); border-radius: 999px; }
 .public-share-permissions svg { color: #15803d; }
@@ -956,6 +965,7 @@ h1 {
 .public-share-error h1 { margin: 0; color: var(--color-foreground); }
 
 @media (max-width: 680px) {
+  .share-target-grid, .public-share-grid.multi { grid-template-columns: 1fr; }
   .share-result { grid-template-columns: 1fr; }
   .share-qr { justify-items: start; }
   .share-history-row { align-items: flex-start; }
