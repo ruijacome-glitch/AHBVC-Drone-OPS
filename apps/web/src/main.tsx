@@ -17,6 +17,7 @@ import {
   Mail,
   MapPin,
   Moon,
+  Pause,
   PlaneTakeoff,
   Play,
   Plus,
@@ -24,6 +25,7 @@ import {
   Pencil,
   Radio,
   RefreshCw,
+  RotateCcw,
   Server,
   ShieldAlert,
   ShieldCheck,
@@ -778,6 +780,8 @@ function FlightHistoryPage() {
   const [tracks, setTracks] = React.useState<HistoricalTrack[]>([]);
   const [selectedTrack, setSelectedTrack] = React.useState<HistoricalTrack | null>(null);
   const [telemetry, setTelemetry] = React.useState<Telemetry[]>([]);
+  const [playbackIndex, setPlaybackIndex] = React.useState(0);
+  const [isPlaying, setIsPlaying] = React.useState(false);
   const droneSn = "1581F5BKP256200BF008";
 
   React.useEffect(() => {
@@ -806,6 +810,35 @@ function FlightHistoryPage() {
         return time >= start && time <= end;
       })
     : [];
+  const orderedSelectedTelemetry = selectedTelemetry.slice().sort((a, b) => a.observed_at.localeCompare(b.observed_at));
+  const playbackPoint = orderedSelectedTelemetry[playbackIndex] ?? null;
+  const playbackPosition: [number, number] | null = playbackPoint?.latitude != null && playbackPoint.longitude != null
+    ? [playbackPoint.longitude, playbackPoint.latitude]
+    : null;
+
+  React.useEffect(() => {
+    setPlaybackIndex(0);
+    setIsPlaying(false);
+  }, [selectedTrack?.id]);
+
+  React.useEffect(() => {
+    if (!isPlaying || orderedSelectedTelemetry.length < 2) return;
+    const timer = window.setInterval(() => {
+      setPlaybackIndex((current) => {
+        if (current >= orderedSelectedTelemetry.length - 1) {
+          setIsPlaying(false);
+          return current;
+        }
+        return current + 1;
+      });
+    }, 500);
+    return () => window.clearInterval(timer);
+  }, [isPlaying, orderedSelectedTelemetry.length]);
+
+  function resetPlayback() {
+    setIsPlaying(false);
+    setPlaybackIndex(0);
+  }
 
   return (
     <main className="app-shell">
@@ -837,10 +870,10 @@ function FlightHistoryPage() {
             ))}
           </div>
           <div className="history-map">
-            {selectedTrack ? <TelemetryMap history={[]} track={selectedTrack} /> : <div className="map-empty"><MapPin size={28} /><strong>Selecione um voo</strong></div>}
+            {selectedTrack ? <TelemetryMap history={[]} track={selectedTrack} playbackPosition={playbackPosition} /> : <div className="map-empty"><MapPin size={28} /><strong>Selecione um voo</strong></div>}
           </div>
         </section>
-        {selectedTrack ? <><div className="history-equipment-strip"><span><strong>Drone</strong>{selectedTrack.drone_callsign || "Sem indicativo"}<small>{selectedTrack.drone_serial}</small></span><span><strong>Piloto</strong>{selectedTrack.pilot_name || "Não registado"}</span></div><TelemetryCharts points={selectedTelemetry} /></> : null}
+        {selectedTrack ? <><div className="history-equipment-strip"><span><strong>Drone</strong>{selectedTrack.drone_callsign || "Sem indicativo"}<small>{selectedTrack.drone_serial}</small></span><span><strong>Piloto</strong>{selectedTrack.pilot_name || "Não registado"}</span></div><section className="playback-panel panel" aria-label="Reprodução do voo"><div><p className="eyebrow">Reprodução do voo</p><strong>{playbackPoint ? new Date(playbackPoint.observed_at).toLocaleString("pt-PT") : "Sem telemetria GPS"}</strong><span>{orderedSelectedTelemetry.length ? `${playbackIndex + 1} / ${orderedSelectedTelemetry.length} pontos` : "Sem pontos disponíveis"}</span></div><div className="playback-facts"><span>Altitude <strong>{playbackPoint?.altitude_m != null ? `${playbackPoint.altitude_m.toFixed(1)} m` : "--"}</strong></span><span>Velocidade <strong>{playbackPoint?.speed_mps != null ? `${playbackPoint.speed_mps.toFixed(1)} m/s` : "--"}</strong></span><span>Bateria <strong>{playbackPoint?.battery_percent != null ? `${playbackPoint.battery_percent}%` : "--"}</strong></span></div><div className="playback-actions"><button className="primary-action" type="button" disabled={orderedSelectedTelemetry.length < 2} onClick={() => { if (playbackIndex >= orderedSelectedTelemetry.length - 1) setPlaybackIndex(0); setIsPlaying((value) => !value); }}>{isPlaying ? <Pause size={17} /> : <Play size={17} />}{isPlaying ? "Pausar" : "Reproduzir"}</button><button className="secondary-action" type="button" onClick={resetPlayback}><RotateCcw size={17} />Recomeçar</button></div><input className="playback-slider" type="range" min="0" max={Math.max(orderedSelectedTelemetry.length - 1, 0)} value={Math.min(playbackIndex, Math.max(orderedSelectedTelemetry.length - 1, 0))} onChange={(event) => { setIsPlaying(false); setPlaybackIndex(Number(event.target.value)); }} aria-label="Posição na reprodução do voo" /></section><TelemetryCharts points={selectedTelemetry} /></> : null}
       </section>
     </main>
   );
@@ -1035,7 +1068,7 @@ function TelemetryChart({ series }: { series: ChartSeries }) {
   );
 }
 
-function TelemetryMap({ history, track }: { history: Telemetry[]; track: FlightTrack | null }) {
+function TelemetryMap({ history, track, playbackPosition = null }: { history: Telemetry[]; track: FlightTrack | null; playbackPosition?: [number, number] | null }) {
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const mapRef = React.useRef<maplibregl.Map | null>(null);
   const markerRef = React.useRef<maplibregl.Marker | null>(null);
@@ -1087,7 +1120,7 @@ function TelemetryMap({ history, track }: { history: Telemetry[]; track: FlightT
   React.useEffect(() => {
     const map = mapRef.current;
     if (!map || routeCoordinates.length === 0) return;
-    const latest = routeCoordinates[routeCoordinates.length - 1];
+    const latest = playbackPosition ?? routeCoordinates[routeCoordinates.length - 1];
     if (!markerRef.current) {
       const element = document.createElement("div");
       element.className = "drone-marker";
@@ -1096,7 +1129,7 @@ function TelemetryMap({ history, track }: { history: Telemetry[]; track: FlightT
       markerRef.current.setLngLat(latest);
     }
     map.easeTo({ center: latest, duration: 500 });
-  }, [routeCoordinates]);
+  }, [routeCoordinates, playbackPosition]);
 
   React.useEffect(() => {
     const map = mapRef.current;
