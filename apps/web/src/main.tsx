@@ -614,6 +614,12 @@ type PublicShare = {
   streams?: Array<{ gateway_sn: string; video_id: string | null; stream_url: string }>;
 };
 
+type PublicShareSnapshot = {
+  latest: Telemetry[];
+  history: Telemetry[];
+  permissions: string[];
+};
+
 type ManagedShare = {
   id: string;
   label: string;
@@ -637,6 +643,9 @@ function formatShareDate(value: string | null): string {
 
 function PublicSharePage() {
   const [share, setShare] = React.useState<PublicShare | null>(null);
+  const [snapshot, setSnapshot] = React.useState<PublicShareSnapshot | null>(null);
+  const [snapshotLoading, setSnapshotLoading] = React.useState(false);
+  const [snapshotError, setSnapshotError] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const token = new URLSearchParams(window.location.search).get("token") ?? "";
 
@@ -650,8 +659,30 @@ function PublicSharePage() {
       .catch((reason) => setError(reason instanceof Error ? reason.message : "Link indisponível."));
   }, [token]);
 
+  React.useEffect(() => {
+    if (!share || (!share.permissions.includes("map") && !share.permissions.includes("telemetry"))) return;
+    let active = true;
+    setSnapshotLoading(true);
+    setSnapshotError(null);
+    const loadSnapshot = async () => {
+      try {
+        const response = await fetch(`${apiBaseUrl}/api/v1/stream-shares/public/${encodeURIComponent(token)}/snapshot`, { cache: "no-store" });
+        if (!response.ok) throw new Error(response.status === 403 ? "Este link não inclui telemetria." : "Não foi possível carregar os dados partilhados.");
+        const result = (await response.json()) as PublicShareSnapshot;
+        if (active) setSnapshot(result);
+      } catch (reason) {
+        if (active) setSnapshotError(reason instanceof Error ? reason.message : "Dados partilhados indisponíveis.");
+      } finally {
+        if (active) setSnapshotLoading(false);
+      }
+    };
+    void loadSnapshot();
+    const timer = window.setInterval(loadSnapshot, 10000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [share, token]);
+
   const streams = share?.streams?.length ? share.streams : share ? [{ gateway_sn: share.gateway_sn, video_id: share.video_id, stream_url: share.stream_url }] : [];
-  return <main className="public-share-page"><motion.section className="public-share-card" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}><header className="auth-brand"><img src="/ahbvc.png" alt="AHBVC" /><div><span>Partilha operacional</span><strong>AirSector</strong></div></header>{error ? <div className="public-share-error"><ShieldAlert size={28} /><h1>Link indisponível</h1><p>{error}</p></div> : share ? <><div className="public-share-heading"><p className="eyebrow">Acesso partilhado</p><h1>{share.label}</h1><span>{share.expires_at ? `Expira em ${new Date(share.expires_at).toLocaleString("pt-PT")}` : "Link permanente"}</span></div>{share.permissions.includes("video") ? <div className={`public-share-grid ${streams.length > 1 ? "multi" : ""}`}>{streams.map((stream, index) => <div className="public-share-source" key={`${stream.gateway_sn}-${stream.video_id ?? index}`}><span>Gateway {stream.gateway_sn}</span><iframe className="public-share-player" title={`Stream ${share.label} ${index + 1}`} src={`${stream.stream_url}/`} allow="autoplay; fullscreen" /></div>)}</div> : <div className="public-share-empty"><Video size={32} /><span>Este link não inclui vídeo.</span></div>}<div className="public-share-permissions">{share.permissions.map((permission) => <span key={permission}><CheckCircle2 size={15} />{permission}</span>)}</div></> : <div className="public-share-loading"><CircleDashed className="spin" size={26} /><span>A validar link seguro...</span></div>}</motion.section></main>;
+  return <main className="public-share-page"><motion.section className="public-share-card" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}><header className="auth-brand"><img src="/ahbvc.png" alt="AHBVC" /><div><span>Partilha operacional</span><strong>AirSector</strong></div></header>{error ? <div className="public-share-error"><ShieldAlert size={28} /><h1>Link indisponível</h1><p>{error}</p></div> : share ? <><div className="public-share-heading"><p className="eyebrow">Acesso partilhado</p><h1>{share.label}</h1><span>{share.expires_at ? `Expira em ${new Date(share.expires_at).toLocaleString("pt-PT")}` : "Link permanente"}</span></div>{share.permissions.includes("video") ? <div className={`public-share-grid ${streams.length > 1 ? "multi" : ""}`}>{streams.map((stream, index) => <div className="public-share-source" key={`${stream.gateway_sn}-${stream.video_id ?? index}`}><span>Gateway {stream.gateway_sn}</span><iframe className="public-share-player" title={`Stream ${share.label} ${index + 1}`} src={`${stream.stream_url}/`} allow="autoplay; fullscreen" /></div>)}</div> : <div className="public-share-empty"><Video size={32} /><span>Este link não inclui vídeo.</span></div>}{share.permissions.includes("map") ? <section className="public-share-data-panel"><div className="panel-heading"><MapPin size={20} /><div><h2>Mapa operacional</h2><span>Localização e trajeto autorizados neste link.</span></div></div>{snapshotLoading && !snapshot ? <p className="public-share-data-status">A carregar localização...</p> : snapshotError ? <p className="public-share-data-status">{snapshotError}</p> : <TelemetryMap history={snapshot?.history ?? []} track={null} />}</section> : null}{share.permissions.includes("telemetry") ? <section className="public-share-data-panel"><div className="panel-heading"><Activity size={20} /><div><h2>Telemetria</h2><span>Dados recebidos das aeronaves partilhadas.</span></div></div>{snapshotLoading && !snapshot ? <p className="public-share-data-status">A carregar telemetria...</p> : snapshotError ? <p className="public-share-data-status">{snapshotError}</p> : snapshot?.history.length ? <TelemetryCharts points={snapshot.history} /> : <p className="public-share-data-status">A aguardar telemetria da aeronave.</p>}</section> : null}<div className="public-share-permissions">{share.permissions.map((permission) => <span key={permission}><CheckCircle2 size={15} />{permission}</span>)}</div></> : <div className="public-share-loading"><CircleDashed className="spin" size={26} /><span>A validar link seguro...</span></div>}</motion.section></main>;
 }
 
 function ActivateAccountPage() {

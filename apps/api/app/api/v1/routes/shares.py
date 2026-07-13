@@ -42,6 +42,29 @@ def _public_url(token: str) -> str:
     return f"https://{settings.root_domain}/share?token={token}"
 
 
+async def _active_public_share(session: object, token: str) -> dict[str, object]:
+    if len(token) < 32 or len(token) > 128:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Share link not found")
+    result = await session.execute(  # type: ignore[attr-defined]
+        text(
+            """
+            UPDATE stream_share_links
+            SET last_accessed_at = now()
+            WHERE token_hash = :token_hash
+              AND revoked_at IS NULL
+              AND (expires_at IS NULL OR expires_at > now())
+            RETURNING label, gateway_sn, video_id, permissions, expires_at,
+                      target_type, target_config
+            """
+        ),
+        {"token_hash": _hash_token(token)},
+    )
+    row = result.mappings().first()
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Share link expired or revoked")
+    return dict(row)
+
+
 @router.post("", dependencies=[Depends(verify_csrf)])
 async def create_share_link(
     payload: CreateShareRequest,
@@ -218,26 +241,8 @@ async def revoke_share_link(
 
 @router.get("/public/{token}")
 async def resolve_public_share(token: str) -> dict[str, object]:
-    if len(token) < 32 or len(token) > 128:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Share link not found")
     async with AsyncSessionLocal() as session, session.begin():
-        result = await session.execute(
-            text(
-                """
-                UPDATE stream_share_links
-                SET last_accessed_at = now()
-                WHERE token_hash = :token_hash
-                  AND revoked_at IS NULL
-                  AND (expires_at IS NULL OR expires_at > now())
-                RETURNING label, gateway_sn, video_id, permissions, expires_at,
-                          target_type, target_config
-                """
-            ),
-            {"token_hash": _hash_token(token)},
-        )
-        row = result.mappings().first()
-    if row is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Share link expired or revoked")
+        row = await _active_public_share(session, token)
     target_config = row.get("target_config") or {}
     configured_sources = target_config.get("sources")
     if isinstance(configured_sources, list) and configured_sources:
@@ -263,7 +268,86 @@ async def resolve_public_share(token: str) -> dict[str, object]:
             for video_id in video_ids
         ]
     return {
-        **dict(row),
+        **row,
         "stream_url": f"https://{settings.stream_public_host}/live/{row['gateway_sn']}",
         "streams": streams,
+    }
+
+
+@router.get("/public/{token}/snapshot")
+async def public_share_snapshot(token: str) -> dict[str, object]:
+    """Return only the telemetry permitted by an active public share link."""
+    async with AsyncSessionLocal() as session, session.begin():
+        share = await _active_public_share(session, token)
+        permissions = set(share.get("permissions") or [])
+        if not permissions.intersection({"map", "telemetry"}):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Telemetry is not included in this link")
+
+        target_config = share.get("target_config") or {}
+        drone_sns = list(dict.fromkeys(target_config.get("aircraft_sns") or []))
+        if target_config.get("aircraft_sn"):
+            drone_sns.append(target_config["aircraft_sn"])
+        video_ids = target_config.get("video_ids") or []
+        drone_sns.extend(video_id.split("/", 1)[0] for video_id in video_ids if isinstance(video_id, str) and "/" in video_id)
+        gateway_sns = list(dict.fromkeys(target_config.get("gateway_sns") or []))
+        if share.get("gateway_sn"):
+            gateway_sns.append(share["gateway_sn"])
+        for source in target_config.get("sources") or []:
+            if isinstance(source, dict) and source.get("gateway_sn"):
+                gateway_sns.append(source["gateway_sn"])
+        gateway_sns = list(dict.fromkeys(gateway_sns))
+
+        conditions: list[str] = []
+        params: dict[str, object] = {"limit": 500}
+        if drone_sns:
+            conditions.append("drone_serial = ANY(CAST(:drone_sns AS text[]))")
+            params["drone_sns"] = drone_sns
+        if gateway_sns and not drone_sns:
+            conditions.append("gateway_serial = ANY(CAST(:gateway_sns AS text[]))")
+            params["gateway_sns"] = gateway_sns
+        mission_id = target_config.get("mission_id")
+        if mission_id:
+            conditions.append("mission_id = CAST(:mission_id AS uuid)")
+            params["mission_id"] = mission_id
+        if not conditions:
+            return {"latest": [], "history": [], "permissions": sorted(permissions)}
+
+        result = await session.execute(
+            text(
+                f"""
+                SELECT drone_serial, gateway_serial, model,
+                       ST_Y(position::geometry) AS latitude,
+                       ST_X(position::geometry) AS longitude,
+                       altitude_m, speed_mps, heading_deg, pitch_deg, roll_deg,
+                       yaw_deg, battery_percent, gps_status, rtk_status,
+                       active_payload, flight_mode, link_quality, source_topic, observed_at
+                FROM telemetry_points
+                WHERE ({' OR '.join(conditions)})
+                ORDER BY observed_at DESC
+                LIMIT :limit
+                """
+            ),
+            params,
+        )
+        history = [_json_public_telemetry(row) for row in result.mappings().all()]
+
+    latest: list[dict[str, object]] = []
+    seen: set[str] = set()
+    for point in history:
+        drone_serial = str(point["drone_serial"])
+        if drone_serial not in seen:
+            seen.add(drone_serial)
+            latest.append(point)
+    return {"latest": latest, "history": history, "permissions": sorted(permissions)}
+
+
+def _json_public_telemetry(row: object) -> dict[str, object]:
+    values = dict(row)  # type: ignore[arg-type]
+    return {
+        key: float(value)
+        if hasattr(value, "as_tuple")
+        else value.isoformat().replace("+00:00", "Z")
+        if isinstance(value, datetime)
+        else value
+        for key, value in values.items()
     }
