@@ -972,6 +972,8 @@ function LiveStreamPage() {
   const [shareSaving, setShareSaving] = React.useState(false);
   const [shareTarget, setShareTarget] = React.useState<"stream" | "aircraft" | "mission">("stream");
   const [selectedAircraftSn, setSelectedAircraftSn] = React.useState("");
+  const [selectedDroneIds, setSelectedDroneIds] = React.useState<string[]>([]);
+  const [equipment, setEquipment] = React.useState<Equipment[]>([]);
   const [selectedMissionId, setSelectedMissionId] = React.useState("");
   const [manualGatewaySns, setManualGatewaySns] = React.useState("");
   const [manualVideoId, setManualVideoId] = React.useState("");
@@ -1028,7 +1030,20 @@ function LiveStreamPage() {
     void authenticatedFetch("/api/v1/operations/missions", { cache: "no-store" }).then(async (response) => {
       if (response.ok) setMissions((await response.json()) as OperationalMission[]);
     });
+    void authenticatedFetch("/api/v1/equipment", { cache: "no-store" }).then(async (response) => {
+      if (response.ok) {
+        const result = (await response.json()) as { equipment: Equipment[] };
+        setEquipment(result.equipment);
+        setSelectedDroneIds((current) => current.length ? current : result.equipment.filter((item) => item.equipment_type === "drone").slice(0, 1).map((item) => item.id));
+      }
+    });
   }, [canControl]);
+
+  const drones = equipment.filter((item) => item.equipment_type === "drone");
+  const controllers = equipment.filter((item) => item.equipment_type === "controller");
+  const selectedDrones = drones.filter((drone) => selectedDroneIds.includes(drone.id));
+  const controllerById = new Map(controllers.map((controller) => [controller.id, controller]));
+  const selectedAircraftSerials = selectedDrones.map((drone) => drone.serial_number);
 
   React.useEffect(() => {
     if (!shareUrl) { setQrDataUrl(null); return; }
@@ -1066,14 +1081,16 @@ function LiveStreamPage() {
   async function createShareLink(event: React.FormEvent) {
     event.preventDefault();
     const manualGateways = manualGatewaySns.split(/[,\n\s]+/).map((value) => value.trim()).filter(Boolean);
-    const targetOptions = shareTarget === "aircraft" ? options.filter((option) => option.aircraft_sn === selectedAircraftSn) : shareTarget === "mission" ? options : selectedOption ? [selectedOption] : [];
-    const gatewaySns = [...new Set([...targetOptions.map((option) => option.gateway_sn), ...manualGateways])];
+    const targetAircraftSerials = selectedAircraftSerials.length ? selectedAircraftSerials : selectedAircraftSn ? [selectedAircraftSn] : [];
+    const targetOptions = shareTarget === "aircraft" ? options.filter((option) => targetAircraftSerials.includes(option.aircraft_sn)) : shareTarget === "mission" ? options : selectedOption ? [selectedOption] : [];
+    const gatewaySns: string[] = [...new Set([...targetOptions.map((option) => option.gateway_sn), ...manualGateways])];
+    selectedDrones.forEach((drone) => { const controller = drone.drone_id ? controllerById.get(drone.drone_id) : undefined; if (controller) gatewaySns.push(controller.serial_number); });
     const videoIds = [...new Set([...targetOptions.map((option) => option.video_id), manualVideoId.trim()].filter(Boolean))];
     if (!gatewaySns.length || (shareTarget === "stream" && !videoIds.length)) {
       setMessage("Indique pelo menos um gateway e, para um stream individual, um Video ID.");
       return;
     }
-    if (shareTarget === "aircraft" && !selectedAircraftSn.trim()) { setMessage("Indique o número de série da aeronave."); return; }
+    if (shareTarget === "aircraft" && !targetAircraftSerials.length) { setMessage("Seleccione pelo menos uma aeronave do inventário."); return; }
     if (shareTarget === "mission" && !selectedMissionId) { setMessage("Seleccione a missão associada."); return; }
     setShareSaving(true);
     setMessage(null);
@@ -1082,7 +1099,7 @@ function LiveStreamPage() {
       const response = await authenticatedFetch("/api/v1/stream-shares", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ label: shareLabel, gateway_sn: gatewaySns[0], video_id: videoIds[0] ?? null, permissions: sharePermissions, expires_in_hours: sharePermanent ? null : Number(shareExpiry), target_type: shareTarget, gateway_sns: gatewaySns, video_ids: videoIds, sources, aircraft_sn: shareTarget === "aircraft" ? selectedAircraftSn : null, mission_id: shareTarget === "mission" ? selectedMissionId : null }),
+        body: JSON.stringify({ label: shareLabel, gateway_sn: gatewaySns[0], video_id: videoIds[0] ?? null, permissions: sharePermissions, expires_in_hours: sharePermanent ? null : Number(shareExpiry), target_type: shareTarget, gateway_sns: [...new Set(gatewaySns)], video_ids: videoIds, sources, aircraft_sn: shareTarget === "aircraft" ? targetAircraftSerials[0] : null, mission_id: shareTarget === "mission" ? selectedMissionId : null }),
       });
       const result = (await response.json().catch(() => ({}))) as { public_url?: string; detail?: string };
       if (!response.ok) throw new Error(result.detail ?? "Não foi possível criar o link.");
@@ -1148,7 +1165,7 @@ function LiveStreamPage() {
           <div className="stream-view panel">{gatewaySn ? <iframe key={streamUrl} title="DJI WebRTC livestream" src={streamUrl} allow="autoplay; fullscreen" /> : <div className="stream-placeholder"><Radio size={40} /><strong>Sem fonte disponível</strong><span>A aguardar uma câmara anunciada pelo Pilot 2.</span></div>}</div>
         </section>
         {canControl ? <>
-          {shareTarget === "aircraft" ? <section className="panel share-source-panel"><label>Número de série da aeronave<input value={selectedAircraftSn} onChange={(event) => setSelectedAircraftSn(event.target.value)} placeholder="Ex.: 1581F5BKP256200BF008" /></label></section> : null}
+          {shareTarget === "aircraft" ? <section className="panel share-source-panel"><div className="panel-heading"><PlaneTakeoff size={20} /><div><h2>Aeronaves do inventário</h2><span>Seleccione uma ou várias aeronaves; os gateways associados são incluídos automaticamente.</span></div></div>{drones.length ? <div className="share-equipment-list">{drones.map((drone) => { const controller = drone.drone_id ? controllerById.get(drone.drone_id) : undefined; return <label className="share-equipment-option" key={drone.id}><input type="checkbox" checked={selectedDroneIds.includes(drone.id)} onChange={() => setSelectedDroneIds((current) => current.includes(drone.id) ? current.filter((id) => id !== drone.id) : [...current, drone.id])} /><span><strong>{drone.callsign || drone.display_name || drone.serial_number}</strong><small>{drone.model || "Aeronave DJI"} · Gateway {controller?.callsign || controller?.serial_number || "não associado"}</small></span></label>; })}</div> : <p className="share-target-hint">Não existem aeronaves no inventário.</p>}</section> : null}
           <section className="panel share-target-panel"><div className="panel-heading"><Share2 size={20} /><div><h2>Alvo da partilha</h2><span>Escolha uma câmara, uma aeronave completa ou uma missão multistream.</span></div></div><div className="share-target-grid"><label>Tipo<select value={shareTarget} onChange={(event) => setShareTarget(event.target.value as "stream" | "aircraft" | "mission")}><option value="stream">Uma câmara</option><option value="aircraft">Todos os streams da aeronave</option><option value="mission">Missão / multistream</option></select></label>{shareTarget === "aircraft" ? <label>Aeronave<select value={selectedAircraftSn} onChange={(event) => setSelectedAircraftSn(event.target.value)}>{[...new Set(options.map((option) => option.aircraft_sn))].map((aircraft) => <option key={aircraft} value={aircraft}>{aircraft}</option>)}</select></label> : null}{shareTarget === "mission" ? <label>Missão<select value={selectedMissionId} onChange={(event) => setSelectedMissionId(event.target.value)}><option value="">Selecione a missão</option>{missions.map((mission) => <option key={mission.id} value={mission.id}>{mission.title}</option>)}</select></label> : null}</div><p className="share-target-hint">{shareTarget === "stream" ? "Partilha apenas a câmara seleccionada." : shareTarget === "aircraft" ? "Inclui todas as câmaras anunciadas para a aeronave seleccionada." : "Inclui os gateways e streams DJI actualmente anunciados para a missão."}</p></section>
           <section className="panel share-source-panel"><div className="share-target-grid"><label>Gateway SNs (opcional, separados por vírgula ou linha)<textarea value={manualGatewaySns} onChange={(event) => setManualGatewaySns(event.target.value)} placeholder="Ex.: 4LFCM3M006Q6DR" rows={2} /></label><label>Video ID (opcional)<input value={manualVideoId} onChange={(event) => setManualVideoId(event.target.value)} placeholder="Ex.: DRONE/CAMERA/thermal-0" /></label></div><label className="share-permanent-toggle"><input type="checkbox" checked={sharePermanent} onChange={(event) => setSharePermanent(event.target.checked)} />Link permanente, sem data de expiração</label><p className="share-target-hint">Pode configurar estes identificadores antecipadamente, mesmo sem o drone ligado. Deixe o Video ID vazio para aguardar qualquer fonte do gateway.</p></section>
           <form className="panel share-panel" onSubmit={createShareLink}><div className="panel-heading"><Share2 size={20} /><div><h2>Partilhar stream</h2><span>Crie um link temporário sem expor credenciais DJI.</span></div></div><div className="share-form-grid"><label>Nome da partilha<input value={shareLabel} onChange={(event) => setShareLabel(event.target.value)} required /></label><label>Expira<select value={shareExpiry} onChange={(event) => setShareExpiry(event.target.value)} disabled={sharePermanent}><option value="1">1 hora</option><option value="8">8 horas</option><option value="24">24 horas</option><option value="72">3 dias</option><option value="168">7 dias</option></select></label></div><fieldset className="share-permissions"><legend>Permissões do link</legend><label><input type="checkbox" checked disabled />Vídeo ao vivo</label>{["map", "telemetry", "markers", "history"].map((permission) => <label key={permission}><input type="checkbox" checked={sharePermissions.includes(permission)} onChange={() => toggleSharePermission(permission)} />{permission === "map" ? "Mapa" : permission === "telemetry" ? "Telemetria" : permission === "markers" ? "Marcadores" : "Histórico"}</label>)}</fieldset><button className="primary-action" type="submit" disabled={shareSaving}><Share2 size={17} />{shareSaving ? "A criar..." : "Criar link"}</button>{shareUrl ? <div className="share-result"><div className="share-link-fields"><input readOnly value={shareUrl} aria-label="Link público criado" /><div className="share-link-actions"><button className="icon-action" type="button" title="Copiar link" aria-label="Copiar link" onClick={() => void navigator.clipboard.writeText(shareUrl)}><Clipboard size={17} /></button><a href={shareUrl} target="_blank" rel="noreferrer">Abrir</a></div></div>{qrDataUrl ? <div className="share-qr"><img src={qrDataUrl} alt="QR Code do link de partilha" /><span>Leia para abrir rapidamente</span></div> : null}</div> : null}</form>

@@ -920,6 +920,12 @@ h1 {
 .share-target-hint { margin: 0; color: var(--color-muted); font-size: 0.78rem; }
 .share-permanent-toggle { display: flex; align-items: center; gap: 7px; color: var(--color-foreground); font-size: 0.82rem; font-weight: 700; }
 .share-permanent-toggle input { width: 17px; height: 17px; accent-color: var(--color-primary); }
+.share-equipment-list { display: grid; gap: 8px; }
+.share-equipment-option { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 8px; cursor: pointer; }
+.share-equipment-option:has(input:checked) { border-color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 8%, var(--color-surface)); }
+.share-equipment-option input { width: 17px; height: 17px; accent-color: var(--color-primary); }
+.share-equipment-option span { display: grid; gap: 2px; }
+.share-equipment-option small { color: var(--color-muted); font-size: 0.76rem; }
 .share-form-grid { display: grid; grid-template-columns: minmax(0, 1fr) 160px; gap: 12px; }
 .share-form-grid label { display: grid; gap: 5px; color: var(--color-muted); font-size: 0.84rem; font-weight: 700; }
 .share-form-grid input, .share-form-grid select { min-height: 42px; padding: 9px 10px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-surface); color: var(--color-foreground); }
