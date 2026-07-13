@@ -1043,6 +1043,7 @@ function TelemetryFacts({ point }: { point: Telemetry }) {
 }
 
 function TelemetryChart({ series }: { series: ChartSeries }) {
+  const [hoveredIndex, setHoveredIndex] = React.useState<number | null>(null);
   const valid = series.values.filter((value): value is number => value != null && Number.isFinite(value));
   if (valid.length === 0) {
     return <article className="chart-card"><strong>{series.label}</strong><span className="chart-empty">Sem dados</span></article>;
@@ -1050,20 +1051,35 @@ function TelemetryChart({ series }: { series: ChartSeries }) {
   const min = Math.min(...valid);
   const max = Math.max(...valid);
   const range = Math.max(max - min, 1);
-  const points = series.values.map((value, index) => {
+  const dataPoints = series.values.map((value, index) => {
     if (value == null) return null;
     const x = series.values.length === 1 ? 50 : (index / (series.values.length - 1)) * 100;
     const y = 92 - ((value - min) / range) * 78;
-    return `${x.toFixed(2)},${y.toFixed(2)}`;
-  }).filter(Boolean).join(" ");
+    return { index, value, x, y };
+  }).filter((point): point is { index: number; value: number; x: number; y: number } => point !== null);
+  const points = dataPoints.map((point) => `${point.x.toFixed(2)},${point.y.toFixed(2)}`).join(" ");
+  const hoveredPoint = hoveredIndex == null ? null : dataPoints.find((point) => point.index === hoveredIndex) ?? null;
+  const fillPoints = `${points} 100,92 0,92`;
+
+  function handleChartMove(event: React.MouseEvent<SVGSVGElement>) {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const position = Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width));
+    setHoveredIndex(Math.round(position * Math.max(series.values.length - 1, 0)));
+  }
 
   return (
     <article className="chart-card">
       <div className="chart-heading"><strong>{series.label}</strong><span>{min.toFixed(1)} - {max.toFixed(1)}</span></div>
-      <svg className="telemetry-chart" viewBox="0 0 100 100" role="img" aria-label={series.label}>
+      <div className="telemetry-chart-wrap">
+      <svg className="telemetry-chart" viewBox="0 0 100 100" role="img" aria-label={series.label} onMouseMove={handleChartMove} onMouseLeave={() => setHoveredIndex(null)}>
         <line x1="0" y1="92" x2="100" y2="92" className="chart-axis" />
+        <polygon points={fillPoints} style={{ fill: series.color }} className="chart-area" />
         <polyline points={points} style={{ stroke: series.color }} />
+        {hoveredPoint ? <><line x1={hoveredPoint.x} y1="8" x2={hoveredPoint.x} y2="92" className="chart-hover-line" /><circle cx={hoveredPoint.x} cy={hoveredPoint.y} r="3.2" style={{ fill: series.color }} className="chart-hover-point" /></> : null}
       </svg>
+      {hoveredPoint ? <motion.div className="chart-tooltip" style={{ left: `${hoveredPoint.x}%` }} initial={{ opacity: 0, y: 3 }} animate={{ opacity: 1, y: 0 }}><strong>{hoveredPoint.value.toFixed(1)}</strong><span>Amostra {hoveredPoint.index + 1}</span></motion.div> : null}
+      </div>
+      <span className="chart-sr-value" aria-live="polite">{hoveredPoint ? `${series.label}: ${hoveredPoint.value.toFixed(1)}, amostra ${hoveredPoint.index + 1}` : ""}</span>
     </article>
   );
 }

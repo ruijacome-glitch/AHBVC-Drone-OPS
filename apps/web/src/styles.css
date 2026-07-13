@@ -626,6 +626,16 @@ h1 {
   background: repeating-linear-gradient(to bottom, transparent 0 25px, rgba(148, 163, 184, 0.14) 26px);
 }
 
+.telemetry-chart-wrap { position: relative; }
+.telemetry-chart { cursor: crosshair; }
+.telemetry-chart .chart-area { fill-opacity: 0.14; }
+.telemetry-chart .chart-hover-line { stroke: #64748b; stroke-width: 0.7; stroke-dasharray: 2 2; vector-effect: non-scaling-stroke; }
+.telemetry-chart .chart-hover-point { stroke: var(--color-surface); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.chart-tooltip { position: absolute; top: 6px; z-index: 2; display: grid; min-width: 78px; transform: translateX(-50%); padding: 6px 8px; border: 1px solid var(--color-border); border-radius: 6px; background: var(--color-foreground); color: var(--color-surface); box-shadow: var(--shadow-soft); pointer-events: none; }
+.chart-tooltip strong { font-size: 0.8rem; line-height: 1; }
+.chart-tooltip span { margin-top: 3px; color: #cbd5e1; font-size: 0.64rem; white-space: nowrap; }
+.chart-sr-value { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
 .telemetry-chart polyline {
   fill: none;
   stroke-linecap: round;
