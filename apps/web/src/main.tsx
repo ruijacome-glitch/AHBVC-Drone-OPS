@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import {
   Activity,
+  Ban,
   Boxes,
   ArrowRight,
   Check,
@@ -41,6 +42,7 @@ import {
   ZoomIn,
 } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import QRCode from "qrcode";
 import maplibregl from "maplibre-gl";
 
 import "./styles.css";
@@ -591,6 +593,18 @@ type PublicShare = {
   stream_url: string;
 };
 
+type ManagedShare = {
+  id: string;
+  label: string;
+  gateway_sn: string;
+  video_id: string | null;
+  permissions: string[];
+  expires_at: string;
+  revoked_at: string | null;
+  created_at: string;
+  last_accessed_at: string | null;
+};
+
 function PublicSharePage() {
   const [share, setShare] = React.useState<PublicShare | null>(null);
   const [error, setError] = React.useState<string | null>(null);
@@ -924,6 +938,10 @@ function LiveStreamPage() {
   const [sharePermissions, setSharePermissions] = React.useState<string[]>(["video"]);
   const [shareUrl, setShareUrl] = React.useState<string | null>(null);
   const [shareSaving, setShareSaving] = React.useState(false);
+  const [qrDataUrl, setQrDataUrl] = React.useState<string | null>(null);
+  const [shares, setShares] = React.useState<ManagedShare[]>([]);
+  const [sharesLoading, setSharesLoading] = React.useState(false);
+  const [revokingShareId, setRevokingShareId] = React.useState<string | null>(null);
   const selectedOption = options.find((option) => option.video_id === selectedVideoId) ?? options[0];
   const gatewaySn = selectedOption?.gateway_sn ?? "";
   const streamUrl = `https://stream.uas.ahbvc.org.pt/live/${gatewaySn}`;
@@ -949,6 +967,27 @@ function LiveStreamPage() {
     const timer = window.setInterval(() => void loadOptions(), 10000);
     return () => window.clearInterval(timer);
   }, [loadOptions]);
+
+  const loadShares = React.useCallback(async () => {
+    if (!canControl) return;
+    setSharesLoading(true);
+    try {
+      const response = await authenticatedFetch("/api/v1/stream-shares", { cache: "no-store" });
+      if (!response.ok) throw new Error("Não foi possível carregar as partilhas.");
+      setShares((await response.json()) as ManagedShare[]);
+    } catch {
+      setShares([]);
+    } finally {
+      setSharesLoading(false);
+    }
+  }, [canControl]);
+
+  React.useEffect(() => { void loadShares(); }, [loadShares]);
+
+  React.useEffect(() => {
+    if (!shareUrl) { setQrDataUrl(null); return; }
+    void QRCode.toDataURL(shareUrl, { width: 240, margin: 1, errorCorrectionLevel: "M" }).then(setQrDataUrl).catch(() => setQrDataUrl(null));
+  }, [shareUrl]);
 
   async function sendCommand(action: "start" | "stop") {
     if (!selectedOption) {
@@ -992,10 +1031,25 @@ function LiveStreamPage() {
       const result = (await response.json().catch(() => ({}))) as { public_url?: string; detail?: string };
       if (!response.ok) throw new Error(result.detail ?? "Não foi possível criar o link.");
       setShareUrl(result.public_url ?? null);
+      await loadShares();
       setMessage("Link de partilha criado.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Não foi possível criar o link.");
     } finally { setShareSaving(false); }
+  }
+
+  async function revokeShareLink(shareId: string) {
+    setRevokingShareId(shareId);
+    try {
+      const response = await authenticatedFetch(`/api/v1/stream-shares/${shareId}/revoke`, { method: "POST" });
+      if (!response.ok) throw new Error("Não foi possível revogar o link.");
+      setMessage("Link revogado.");
+      await loadShares();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Não foi possível revogar o link.");
+    } finally {
+      setRevokingShareId(null);
+    }
   }
 
   function toggleSharePermission(permission: string) {
@@ -1037,7 +1091,10 @@ function LiveStreamPage() {
           </form>
           <div className="stream-view panel">{gatewaySn ? <iframe key={streamUrl} title="DJI WebRTC livestream" src={streamUrl} allow="autoplay; fullscreen" /> : <div className="stream-placeholder"><Radio size={40} /><strong>Sem fonte disponível</strong><span>A aguardar uma câmara anunciada pelo Pilot 2.</span></div>}</div>
         </section>
-        {canControl ? <form className="panel share-panel" onSubmit={createShareLink}><div className="panel-heading"><Share2 size={20} /><div><h2>Partilhar stream</h2><span>Crie um link temporário sem expor credenciais DJI.</span></div></div><div className="share-form-grid"><label>Nome da partilha<input value={shareLabel} onChange={(event) => setShareLabel(event.target.value)} required /></label><label>Expira<select value={shareExpiry} onChange={(event) => setShareExpiry(event.target.value)}><option value="1">1 hora</option><option value="8">8 horas</option><option value="24">24 horas</option><option value="72">3 dias</option><option value="168">7 dias</option></select></label></div><fieldset className="share-permissions"><legend>Permissões do link</legend><label><input type="checkbox" checked disabled />Vídeo ao vivo</label>{["map", "telemetry", "markers", "history"].map((permission) => <label key={permission}><input type="checkbox" checked={sharePermissions.includes(permission)} onChange={() => toggleSharePermission(permission)} />{permission === "map" ? "Mapa" : permission === "telemetry" ? "Telemetria" : permission === "markers" ? "Marcadores" : "Histórico"}</label>)}</fieldset><button className="primary-action" type="submit" disabled={!selectedOption || shareSaving}><Share2 size={17} />{shareSaving ? "A criar..." : "Criar link"}</button>{shareUrl ? <div className="share-result"><input readOnly value={shareUrl} aria-label="Link público criado" /><button className="icon-action" type="button" title="Copiar link" aria-label="Copiar link" onClick={() => void navigator.clipboard.writeText(shareUrl)}><Clipboard size={17} /></button><a href={shareUrl} target="_blank" rel="noreferrer">Abrir</a></div> : null}</form> : null}
+        {canControl ? <>
+          <form className="panel share-panel" onSubmit={createShareLink}><div className="panel-heading"><Share2 size={20} /><div><h2>Partilhar stream</h2><span>Crie um link temporário sem expor credenciais DJI.</span></div></div><div className="share-form-grid"><label>Nome da partilha<input value={shareLabel} onChange={(event) => setShareLabel(event.target.value)} required /></label><label>Expira<select value={shareExpiry} onChange={(event) => setShareExpiry(event.target.value)}><option value="1">1 hora</option><option value="8">8 horas</option><option value="24">24 horas</option><option value="72">3 dias</option><option value="168">7 dias</option></select></label></div><fieldset className="share-permissions"><legend>Permissões do link</legend><label><input type="checkbox" checked disabled />Vídeo ao vivo</label>{["map", "telemetry", "markers", "history"].map((permission) => <label key={permission}><input type="checkbox" checked={sharePermissions.includes(permission)} onChange={() => toggleSharePermission(permission)} />{permission === "map" ? "Mapa" : permission === "telemetry" ? "Telemetria" : permission === "markers" ? "Marcadores" : "Histórico"}</label>)}</fieldset><button className="primary-action" type="submit" disabled={!selectedOption || shareSaving}><Share2 size={17} />{shareSaving ? "A criar..." : "Criar link"}</button>{shareUrl ? <div className="share-result"><div className="share-link-fields"><input readOnly value={shareUrl} aria-label="Link público criado" /><div className="share-link-actions"><button className="icon-action" type="button" title="Copiar link" aria-label="Copiar link" onClick={() => void navigator.clipboard.writeText(shareUrl)}><Clipboard size={17} /></button><a href={shareUrl} target="_blank" rel="noreferrer">Abrir</a></div></div>{qrDataUrl ? <div className="share-qr"><img src={qrDataUrl} alt="QR Code do link de partilha" /><span>Leia para abrir rapidamente</span></div> : null}</div> : null}</form>
+          <section className="panel share-history-panel"><div className="panel-heading"><History size={20} /><div><h2>Links emitidos</h2><span>Revogue acessos que já não devem estar disponíveis.</span></div><button className="icon-action" type="button" onClick={() => void loadShares()} aria-label="Atualizar links" title="Atualizar links"><RefreshCw size={18} /></button></div>{sharesLoading ? <p className="share-history-empty">A carregar links...</p> : shares.length === 0 ? <p className="share-history-empty">Ainda não foram criados links de partilha.</p> : <div className="share-history-list">{shares.map((share) => { const expired = new Date(share.expires_at).getTime() <= Date.now(); const status = share.revoked_at ? "Revogado" : expired ? "Expirado" : "Activo"; return <div className="share-history-row" key={share.id}><div><strong>{share.label}</strong><span>{share.gateway_sn} · {share.permissions.join(", ")}</span><small>Expira {new Date(share.expires_at).toLocaleString("pt-PT")}{share.last_accessed_at ? ` · último acesso ${new Date(share.last_accessed_at).toLocaleString("pt-PT")}` : ""}</small></div><div className="share-history-actions"><span className={`share-status ${status === "Activo" ? "active" : "inactive"}`}>{status}</span>{!share.revoked_at && !expired ? <button className="icon-action danger-action" type="button" title="Revogar link" aria-label={`Revogar ${share.label}`} disabled={revokingShareId === share.id} onClick={() => void revokeShareLink(share.id)}><Ban size={17} /></button> : null}</div></div>; })}</div>}</section>
+        </> : null}
       </section>
     </main>
   );
