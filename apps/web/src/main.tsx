@@ -488,6 +488,7 @@ function ProtectedApp({ mode }: { mode: "pilot" | "ops" }) {
   const path = window.location.pathname;
   if (path === "/stream") return <LiveStreamPage />;
   if (path === "/users") return user.roles.includes("Administrador") ? <UserManagementPage /> : <AccessDeniedPage />;
+  if (path.startsWith("/missions/")) return <MissionDetailPage missionId={path.split("/")[2] ?? ""} />;
   if (path === "/missions") return <MissionManagementPage />;
   if (path === "/history") return <FlightHistoryPage />;
   return <OpsDashboard />;
@@ -1102,6 +1103,7 @@ type OperationalMission = {
   is_training: boolean;
   status: string;
   pilot_name: string | null;
+  drone_serial: string | null;
   created_at: string;
   flight_count: number;
 };
@@ -1114,6 +1116,16 @@ type OperationalFlight = {
   notes: string | null;
   started_at: string | null;
   ended_at: string | null;
+  created_at: string;
+};
+
+type OperationalEvent = {
+  id: number;
+  event_type: string;
+  from_status: string | null;
+  to_status: string | null;
+  reason: string | null;
+  metadata: Record<string, unknown>;
   created_at: string;
 };
 
@@ -1290,12 +1302,79 @@ function MissionManagementPage() {
         <section className="panel missions-list" aria-label="Missões registadas">
           <div className="panel-heading"><PlaneTakeoff size={20} /><div><h2>Missões registadas</h2><span>Cada missão agrega os seus voos, telemetria, streams e media.</span></div></div>
           {loading ? <div className="dashboard-empty"><CircleDashed className="spin" size={24} /><strong>A carregar missões</strong></div> : missions.length ? <div className="mission-table" role="table">
-            {missions.map((mission) => <React.Fragment key={mission.id}><div className="mission-row" role="row"><div className="mission-main"><strong>{mission.title}</strong><span>{mission.is_training ? "Treino" : mission.occurrence_code ? `${mission.occurrence_code} · ${mission.occurrence_title}` : "Sem ocorrência"}</span></div><span className={`mission-status status-${mission.status}`}>{statusLabel[mission.status] ?? mission.status}</span><div className="flight-count"><Radio size={16} /><strong>{mission.flight_count}</strong><span>{mission.flight_count === 1 ? "voo" : "voos"}</span></div><time dateTime={mission.created_at}>{new Date(mission.created_at).toLocaleDateString("pt-PT")}</time><button className="secondary-action mission-view-action" type="button" onClick={() => setExpandedMission((current) => current === mission.id ? null : mission.id)} aria-expanded={expandedMission === mission.id}>{expandedMission === mission.id ? "Fechar" : "Ver voos"}</button>{canWrite ? <motion.button className="add-flight-action" type="button" onClick={() => void addFlight(mission.id)} disabled={addingFlight === mission.id} whileTap={{ scale: 0.97 }} title="Adicionar voo planeado"><Plus size={17} />{addingFlight === mission.id ? "A adicionar" : "Adicionar voo"}</motion.button> : null}</div>{expandedMission === mission.id ? <motion.div className="flight-list" initial={reduceMotion ? false : { opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }}><div className="flight-list-heading"><strong>Voos desta missão</strong><span>{mission.objective}</span></div>{(flightsByMission[mission.id] ?? []).map((flight) => <div className="flight-row" key={flight.id}><div><strong>Voo {flight.sequence_number}</strong><span>{flight.started_at ? new Date(flight.started_at).toLocaleString("pt-PT") : "Ainda não iniciado"}</span></div><span className={`mission-status status-${flight.status}`}>{statusLabel[flight.status]}</span>{canWrite && flight.status === "planned" ? <motion.button className="primary-action compact-action" type="button" onClick={() => void updateFlightStatus(flight.id, "active")} disabled={flightAction === flight.id} whileTap={{ scale: 0.97 }}><PlaneTakeoff size={16} />Iniciar voo</motion.button> : null}{canWrite && flight.status === "active" ? <div className="flight-actions"><motion.button className="secondary-action compact-action" type="button" onClick={() => void updateFlightStatus(flight.id, "completed")} disabled={flightAction === flight.id} whileTap={{ scale: 0.97 }}><Check size={16} />Concluir</motion.button><motion.button className="danger-action compact-action" type="button" onClick={() => void updateFlightStatus(flight.id, "aborted")} disabled={flightAction === flight.id} whileTap={{ scale: 0.97 }}><ShieldAlert size={16} />Abortar</motion.button></div> : null}</div>)}</motion.div> : null}</React.Fragment>)}
+            {missions.map((mission) => <React.Fragment key={mission.id}><div className="mission-row" role="row"><div className="mission-main"><strong>{mission.title}</strong><span>{mission.is_training ? "Treino" : mission.occurrence_code ? `${mission.occurrence_code} · ${mission.occurrence_title}` : "Sem ocorrência"}</span><a className="mission-detail-link" href={`/missions/${mission.id}`}>Abrir detalhe</a></div><span className={`mission-status status-${mission.status}`}>{statusLabel[mission.status] ?? mission.status}</span><div className="flight-count"><Radio size={16} /><strong>{mission.flight_count}</strong><span>{mission.flight_count === 1 ? "voo" : "voos"}</span></div><time dateTime={mission.created_at}>{new Date(mission.created_at).toLocaleDateString("pt-PT")}</time><button className="secondary-action mission-view-action" type="button" onClick={() => setExpandedMission((current) => current === mission.id ? null : mission.id)} aria-expanded={expandedMission === mission.id}>{expandedMission === mission.id ? "Fechar" : "Ver voos"}</button>{canWrite ? <motion.button className="add-flight-action" type="button" onClick={() => void addFlight(mission.id)} disabled={addingFlight === mission.id} whileTap={{ scale: 0.97 }} title="Adicionar voo planeado"><Plus size={17} />{addingFlight === mission.id ? "A adicionar" : "Adicionar voo"}</motion.button> : null}</div>{expandedMission === mission.id ? <motion.div className="flight-list" initial={reduceMotion ? false : { opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }}><div className="flight-list-heading"><strong>Voos desta missão</strong><span>{mission.objective}</span></div>{(flightsByMission[mission.id] ?? []).map((flight) => <div className="flight-row" key={flight.id}><div><strong>Voo {flight.sequence_number}</strong><span>{flight.started_at ? new Date(flight.started_at).toLocaleString("pt-PT") : "Ainda não iniciado"}</span></div><span className={`mission-status status-${flight.status}`}>{statusLabel[flight.status]}</span>{canWrite && flight.status === "planned" ? <motion.button className="primary-action compact-action" type="button" onClick={() => void updateFlightStatus(flight.id, "active")} disabled={flightAction === flight.id} whileTap={{ scale: 0.97 }}><PlaneTakeoff size={16} />Iniciar voo</motion.button> : null}{canWrite && flight.status === "active" ? <div className="flight-actions"><motion.button className="secondary-action compact-action" type="button" onClick={() => void updateFlightStatus(flight.id, "completed")} disabled={flightAction === flight.id} whileTap={{ scale: 0.97 }}><Check size={16} />Concluir</motion.button><motion.button className="danger-action compact-action" type="button" onClick={() => void updateFlightStatus(flight.id, "aborted")} disabled={flightAction === flight.id} whileTap={{ scale: 0.97 }}><ShieldAlert size={16} />Abortar</motion.button></div> : null}</div>)}</motion.div> : null}</React.Fragment>)}
           </div> : <div className="dashboard-empty"><PlaneTakeoff size={26} /><strong>Sem missões registadas</strong><span>Crie a primeira ocorrência e associe-lhe uma missão operacional.</span></div>}
         </section>
       </section>
     </main>
   );
+}
+
+function MissionDetailPage({ missionId }: { missionId: string }) {
+  const reduceMotion = useReducedMotion();
+  const [mission, setMission] = React.useState<OperationalMission | null>(null);
+  const [flights, setFlights] = React.useState<OperationalFlight[]>([]);
+  const [events, setEvents] = React.useState<OperationalEvent[]>([]);
+  const [tracks, setTracks] = React.useState<HistoricalTrack[]>([]);
+  const [telemetry, setTelemetry] = React.useState<Telemetry[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    let active = true;
+    async function load() {
+      setLoading(true); setError(null);
+      try {
+        const missionsResponse = await authenticatedFetch("/api/v1/operations/missions", { cache: "no-store" });
+        if (!missionsResponse.ok) throw new Error("Não foi possível carregar as missões.");
+        const missions = await missionsResponse.json() as OperationalMission[];
+        const selected = missions.find((item) => item.id === missionId);
+        if (!selected) throw new Error("Missão não encontrada.");
+        const [flightsResponse, eventsResponse] = await Promise.all([
+          authenticatedFetch(`/api/v1/operations/missions/${missionId}/flights`, { cache: "no-store" }),
+          authenticatedFetch(`/api/v1/operations/missions/${missionId}/events`, { cache: "no-store" }),
+        ]);
+        let nextTracks: HistoricalTrack[] = [];
+        let nextTelemetry: Telemetry[] = [];
+        if (selected.drone_serial) {
+          const [tracksResponse, telemetryResponse] = await Promise.all([
+            authenticatedFetch(`/api/v1/dji/mqtt/telemetry/${selected.drone_serial}/tracks?limit=20`, { cache: "no-store" }),
+            authenticatedFetch(`/api/v1/dji/mqtt/telemetry/${selected.drone_serial}/history?limit=500`, { cache: "no-store" }),
+          ]);
+          nextTracks = tracksResponse.ok ? await tracksResponse.json() as HistoricalTrack[] : [];
+          nextTelemetry = telemetryResponse.ok ? await telemetryResponse.json() as Telemetry[] : [];
+        }
+        if (!active) return;
+        setMission(selected);
+        setFlights(flightsResponse.ok ? await flightsResponse.json() as OperationalFlight[] : []);
+        setEvents(eventsResponse.ok ? await eventsResponse.json() as OperationalEvent[] : []);
+        setTracks(nextTracks); setTelemetry(nextTelemetry);
+      } catch (reason) {
+        if (active) setError(reason instanceof Error ? reason.message : "Não foi possível carregar a missão.");
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+    void load();
+    return () => { active = false; };
+  }, [missionId]);
+
+  if (loading) return <main className="app-shell"><AppSidebar active="missions" /><section className="workspace"><div className="dashboard-empty"><CircleDashed className="spin" size={26} /><strong>A carregar detalhe da missão</strong></div></section></main>;
+  if (error || !mission) return <main className="app-shell"><AppSidebar active="missions" /><section className="workspace access-denied"><ShieldAlert size={36} /><h1>Missão indisponível</h1><p>{error ?? "Não foi possível localizar esta missão."}</p><a className="primary-action" href="/missions">Voltar às missões</a></section></main>;
+
+  const orderedTelemetry = telemetry.slice().sort((a, b) => a.observed_at.localeCompare(b.observed_at));
+  const latest = orderedTelemetry[orderedTelemetry.length - 1];
+  const selectedTrack = tracks[0] ?? null;
+  const statusLabel: Record<string, string> = { draft: "Rascunho", active: "Em curso", completed: "Concluída", aborted: "Abortada", planned: "Planeado" };
+  const eventLabel = (event: OperationalEvent) => event.event_type === "mission.created" ? "Missão criada" : event.event_type === "flight.created" ? "Voo planeado" : event.event_type === "flight.status_changed" ? `Voo ${statusLabel[event.to_status ?? ""]?.toLowerCase() ?? "atualizado"}` : event.event_type;
+
+  return <main className="app-shell"><AppSidebar active="missions" /><section className="workspace mission-detail-page">
+    <header className="topbar"><div><a className="back-link" href="/missions">← Missões</a><p className="eyebrow">Detalhe operacional</p><h1>{mission.title}</h1><span className="mission-subtitle">{mission.is_training ? "Missão de treino" : `${mission.occurrence_code ?? "Sem ocorrência"} · ${mission.occurrence_title ?? ""}`}</span></div><span className={`mission-status status-${mission.status}`}>{statusLabel[mission.status] ?? mission.status}</span></header>
+    <section className="mission-detail-metrics" aria-label="Resumo da missão"><div><span>Voos</span><strong>{flights.length}</strong></div><div><span>Telemetria</span><strong>{orderedTelemetry.length}</strong></div><div><span>Bateria atual</span><strong>{latest?.battery_percent != null ? `${latest.battery_percent}%` : "--"}</strong></div><div><span>Altitude máxima</span><strong>{orderedTelemetry.length ? `${Math.max(...orderedTelemetry.map((point) => point.altitude_m ?? 0)).toFixed(1)} m` : "--"}</strong></div></section>
+    <div className="mission-detail-grid"><section className="panel mission-map-panel"><div className="panel-heading"><MapPin size={20} /><div><h2>Trajeto e posição</h2><span>{mission.drone_serial ? `Aeronave ${mission.drone_serial}` : "Sem aeronave atribuída"}</span></div></div>{selectedTrack || orderedTelemetry.length ? <TelemetryMap history={orderedTelemetry} track={selectedTrack} /> : <div className="map-empty"><MapPin size={28} /><strong>Ainda sem posição GPS</strong><span>O trajeto aparecerá quando o voo transmitir coordenadas.</span></div>}</section><section className="panel mission-flights-panel"><div className="panel-heading"><PlaneTakeoff size={20} /><div><h2>Voos da missão</h2><span>{mission.objective}</span></div></div>{flights.length ? <div className="detail-flight-list">{flights.map((flight) => <div className="detail-flight-row" key={flight.id}><div><strong>Voo {flight.sequence_number}</strong><span>{flight.started_at ? new Date(flight.started_at).toLocaleString("pt-PT") : "Planeado"}</span></div><span className={`mission-status status-${flight.status}`}>{statusLabel[flight.status] ?? flight.status}</span></div>)}</div> : <p className="empty-state">Ainda não existem voos associados.</p>}</section></div>
+    <TelemetryCharts points={orderedTelemetry} />
+    <section className="panel mission-events-panel"><div className="panel-heading"><Activity size={20} /><div><h2>Timeline da missão</h2><span>Registo operacional e auditoria</span></div></div>{events.length ? <div className="mission-event-list">{events.map((event, index) => <motion.div className="mission-event" key={event.id} initial={reduceMotion ? false : { opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: index * 0.04 }}><CheckCircle2 size={18} /><div><strong>{eventLabel(event)}</strong><span>{new Date(event.created_at).toLocaleString("pt-PT")}{event.reason ? ` · ${event.reason}` : ""}</span></div></motion.div>)}</div> : <p className="empty-state">A timeline será preenchida quando a missão tiver atividade.</p>}</section>
+  </section></main>;
 }
 
 function UserManagementPage() {

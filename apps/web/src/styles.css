@@ -1366,6 +1366,8 @@ h1 {
 .mission-main span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mission-main span,
 .mission-row time { color: var(--color-muted); font-size: 0.78rem; }
+.mission-detail-link { color: var(--color-accent); font-size: 0.76rem; font-weight: 700; text-decoration: none; }
+.mission-detail-link:hover { text-decoration: underline; }
 .mission-status { justify-self: start; padding: 5px 8px; border-radius: 999px; background: #f1f5f9; color: #475569; font-size: 0.7rem; font-weight: 800; }
 .mission-status.status-active,
 .mission-status.status-ready { background: #dcfce7; color: #166534; }
@@ -1375,6 +1377,25 @@ h1 {
 .flight-count { display: flex; align-items: center; gap: 5px; color: var(--color-muted); }
 .flight-count strong { color: var(--color-foreground); }
 .flight-count span { font-size: 0.74rem; }
+.mission-subtitle { color: var(--color-muted); font-size: 0.88rem; }
+.back-link { display: inline-flex; margin-bottom: 8px; color: var(--color-accent); font-size: 0.82rem; font-weight: 700; text-decoration: none; }
+.back-link:hover { text-decoration: underline; }
+.mission-detail-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
+.mission-detail-metrics > div { display: grid; gap: 4px; min-height: 82px; padding: 14px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-surface); }
+.mission-detail-metrics span { color: var(--color-muted); font-size: 0.78rem; }
+.mission-detail-metrics strong { font-size: 1.35rem; }
+.mission-detail-grid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(280px, 0.8fr); gap: 18px; margin-bottom: 18px; }
+.mission-map-panel .maplibre-container, .mission-map-panel .history-map { min-height: 360px; }
+.detail-flight-list { display: grid; }
+.detail-flight-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px 0; border-top: 1px solid var(--color-border); }
+.detail-flight-row div { display: grid; gap: 3px; }
+.detail-flight-row span:not(.mission-status) { color: var(--color-muted); font-size: 0.78rem; }
+.mission-events-panel { margin-top: 18px; }
+.mission-event-list { display: grid; gap: 0; }
+.mission-event { display: flex; align-items: flex-start; gap: 12px; padding: 13px 0; border-top: 1px solid var(--color-border); }
+.mission-event svg { flex: 0 0 auto; color: var(--color-accent); margin-top: 2px; }
+.mission-event div { display: grid; gap: 3px; }
+.mission-event span { color: var(--color-muted); font-size: 0.8rem; }
 .mission-view-action { justify-self: end; min-height: 40px; }
 .flight-list { overflow: hidden; margin: -1px 0 12px; padding: 14px 18px 16px 54px; border-left: 2px solid var(--color-accent); background: var(--color-muted); }
 .flight-list-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 10px; }
@@ -1593,6 +1614,9 @@ h1 {
   .operations-form-grid {
     grid-template-columns: 1fr;
   }
+
+  .mission-detail-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .mission-detail-grid { grid-template-columns: 1fr; }
 
   .operations-objective { grid-column: auto; }
   .mission-row { grid-template-columns: minmax(0, 1fr) auto; padding: 12px 0; }

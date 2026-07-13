@@ -81,6 +81,7 @@ class MissionResponse(BaseModel):
     controller_id: UUID | None
     pilot_id: UUID | None
     pilot_name: str | None
+    drone_serial: str | None
     started_at: datetime | None
     ended_at: datetime | None
     created_at: datetime
@@ -104,6 +105,16 @@ class FlightResponse(BaseModel):
     notes: str | None
     started_at: datetime | None
     ended_at: datetime | None
+    created_at: datetime
+
+
+class MissionEventResponse(BaseModel):
+    id: int
+    event_type: str
+    from_status: str | None
+    to_status: str | None
+    reason: str | None
+    metadata: dict[str, object]
     created_at: datetime
 
 
@@ -164,6 +175,7 @@ MISSION_SELECT = """
            COALESCE(m.objective, '') AS objective,
            m.operational_area, m.is_training, m.status, m.drone_id,
            m.controller_id, m.pilot_id, u.full_name AS pilot_name,
+           d.serial_number AS drone_serial,
            m.started_at, m.ended_at, m.created_at,
            COUNT(f.id)::int AS flight_count
     FROM missions m
@@ -253,7 +265,7 @@ async def list_missions(
                 + """
                 WHERE (CAST(:organisation_id AS uuid) IS NULL OR
                        m.organisation_id = CAST(:organisation_id AS uuid))
-                GROUP BY m.id, o.id, u.id
+                GROUP BY m.id, o.id, u.id, d.id
                 ORDER BY (m.status IN ('active', 'ready')) DESC, m.created_at DESC
                 """
             ),
@@ -361,7 +373,7 @@ async def create_mission(
         )
         await _audit(session, user, "mission.create", "mission", mission_id)
         result = await session.execute(
-            text(MISSION_SELECT + " WHERE m.id = :id GROUP BY m.id, o.id, u.id"),
+            text(MISSION_SELECT + " WHERE m.id = :id GROUP BY m.id, o.id, u.id, d.id"),
             {"id": mission_id},
         )
         return MissionResponse(**dict(result.mappings().one()))
@@ -388,6 +400,30 @@ async def list_flights(
             {"mission_id": mission_id, "organisation_id": user.organisation_id},
         )
         return [FlightResponse(**dict(row)) for row in result.mappings().all()]
+
+
+@router.get("/missions/{mission_id}/events", response_model=list[MissionEventResponse])
+async def list_mission_events(
+    mission_id: UUID,
+    user: Annotated[AuthenticatedUser, Depends(require_roles(ALL_ROLES))],
+) -> list[MissionEventResponse]:
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            text(
+                """
+                SELECT e.id, e.event_type, e.from_status, e.to_status, e.reason,
+                       e.metadata, e.created_at
+                FROM mission_events e
+                WHERE e.mission_id = :mission_id
+                  AND (CAST(:organisation_id AS uuid) IS NULL OR
+                       e.organisation_id = CAST(:organisation_id AS uuid))
+                ORDER BY e.created_at DESC
+                LIMIT 100
+                """
+            ),
+            {"mission_id": mission_id, "organisation_id": user.organisation_id},
+        )
+        return [MissionEventResponse(**dict(row)) for row in result.mappings().all()]
 
 
 @router.post(
