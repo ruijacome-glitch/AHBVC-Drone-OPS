@@ -976,21 +976,21 @@ h1 {
 .public-share-data-panel .map-grid { min-height: 360px; height: min(52vh, 520px); }
 .public-share-data-panel .telemetry-history { margin: 0; padding: 0; border: 0; box-shadow: none; background: transparent; }
 .public-share-data-status { margin: 0; padding: 18px; border: 1px dashed var(--color-border); border-radius: 8px; color: var(--color-muted); }
-.public-share-card:has(.public-share-data-panel:has(.map-grid)) { display: grid; grid-template-columns: minmax(0, 1.08fr) minmax(320px, 0.92fr); gap: 0 18px; }
-.public-share-card:has(.public-share-data-panel:has(.map-grid)) > .auth-brand,
-.public-share-card:has(.public-share-data-panel:has(.map-grid)) > .public-share-heading,
-.public-share-card:has(.public-share-data-panel:has(.map-grid)) > .public-share-permissions { grid-column: 1 / -1; }
-.public-share-card:has(.public-share-data-panel:has(.map-grid)) > .public-share-grid,
-.public-share-card:has(.public-share-data-panel:has(.map-grid)) > .public-share-empty { grid-column: 1; align-self: start; }
-.public-share-card:has(.public-share-data-panel:has(.map-grid)) > .public-share-data-panel:has(.map-grid) { grid-column: 2; grid-row: 3; margin-top: 0; padding-top: 0; border-top: 0; }
-.public-share-card:has(.public-share-data-panel:has(.map-grid)) > .public-share-data-panel:has(.map-grid) .map-grid { height: min(65vh, 620px); min-height: 420px; }
-.public-share-card:has(.public-share-data-panel:has(.map-grid)) > .public-share-data-panel:not(:has(.map-grid)) { grid-column: 1 / -1; }
+.public-share-card:has(.map-grid) { display: grid; grid-template-columns: minmax(0, 1.08fr) minmax(320px, 0.92fr); gap: 0 18px; }
+.public-share-card:has(.map-grid) > .auth-brand,
+.public-share-card:has(.map-grid) > .public-share-heading,
+.public-share-card:has(.map-grid) > .public-share-permissions { grid-column: 1 / -1; }
+.public-share-card:has(.map-grid) > .public-share-grid,
+.public-share-card:has(.map-grid) > .public-share-empty { grid-column: 1; align-self: start; }
+.public-share-card:has(.map-grid) > .public-share-data-panel:has(.map-grid) { grid-column: 2; grid-row: 3; margin-top: 0; padding-top: 0; border-top: 0; }
+.public-share-card:has(.map-grid) > .public-share-data-panel:has(.map-grid) .map-grid { height: min(65vh, 620px); min-height: 420px; }
+.public-share-card:has(.map-grid) > .public-share-data-panel:not(:has(.map-grid)) { grid-column: 1 / -1; }
 
 @media (max-width: 680px) {
   .share-target-grid, .public-share-grid.multi { grid-template-columns: 1fr; }
-  .public-share-card:has(.public-share-data-panel:has(.map-grid)) { display: block; }
-  .public-share-card:has(.public-share-data-panel:has(.map-grid)) > .public-share-data-panel:has(.map-grid) { margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--color-border); }
-  .public-share-card:has(.public-share-data-panel:has(.map-grid)) > .public-share-data-panel:has(.map-grid) .map-grid { min-height: 360px; height: min(62vh, 500px); }
+  .public-share-card:has(.map-grid) { display: block; }
+  .public-share-card:has(.map-grid) > .public-share-data-panel:has(.map-grid) { margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--color-border); }
+  .public-share-card:has(.map-grid) > .public-share-data-panel:has(.map-grid) .map-grid { min-height: 360px; height: min(62vh, 500px); }
   .share-result { grid-template-columns: 1fr; }
   .share-qr { justify-items: start; }
   .share-history-row { align-items: flex-start; }
