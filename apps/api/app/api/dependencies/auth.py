@@ -16,6 +16,17 @@ PILOT_ROLES = frozenset({"Administrador", "Piloto"})
 REPORT_ROLES = frozenset({"Administrador", "Operador", "Piloto"})
 OPERATIONS_WRITE_ROLES = frozenset({"Administrador", "Operador"})
 
+ROLE_ALIASES = {
+    "admin": "Administrador",
+    "administrador": "Administrador",
+    "operator": "Operador",
+    "operador": "Operador",
+    "pilot": "Piloto",
+    "piloto": "Piloto",
+    "observer": "Observador",
+    "observador": "Observador",
+}
+
 
 @dataclass(frozen=True)
 class AuthenticatedUser:
@@ -67,7 +78,13 @@ def require_roles(allowed_roles: frozenset[str]) -> Callable[..., AuthenticatedU
     async def dependency(
         user: Annotated[AuthenticatedUser, Depends(current_user)],
     ) -> AuthenticatedUser:
-        if not user.roles.intersection(allowed_roles):
+        normalized_user_roles = {
+            ROLE_ALIASES.get(role.strip().casefold(), role.strip()) for role in user.roles
+        }
+        normalized_allowed_roles = {
+            ROLE_ALIASES.get(role.strip().casefold(), role.strip()) for role in allowed_roles
+        }
+        if not normalized_user_roles.intersection(normalized_allowed_roles):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
         return user
 

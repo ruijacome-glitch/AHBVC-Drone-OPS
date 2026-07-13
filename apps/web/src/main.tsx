@@ -61,6 +61,25 @@ type AuthUser = {
   roles: string[];
 };
 
+const roleAliases: Record<string, string> = {
+  admin: "administrador",
+  administrador: "administrador",
+  operator: "operador",
+  operador: "operador",
+  pilot: "piloto",
+  piloto: "piloto",
+  observer: "observador",
+  observador: "observador",
+};
+
+function hasAnyRole(roles: string[], allowed: string[]): boolean {
+  return roles.some((role) => allowed.some((candidate) => {
+    const normalizedRole = roleAliases[role.trim().toLocaleLowerCase("pt-PT")] ?? role.trim().toLocaleLowerCase("pt-PT");
+    const normalizedCandidate = roleAliases[candidate.trim().toLocaleLowerCase("pt-PT")] ?? candidate.trim().toLocaleLowerCase("pt-PT");
+    return normalizedRole === normalizedCandidate;
+  }));
+}
+
 type AuthContextValue = {
   user: AuthUser;
   logout: () => Promise<void>;
@@ -482,7 +501,7 @@ type NavigationPage = "operations" | "missions" | "history" | "stream" | "equipm
 
 function AppSidebar({ active }: { active: NavigationPage }) {
   const { user, logout } = useAuth();
-  const isAdmin = user.roles.includes("Administrador");
+  const isAdmin = hasAnyRole(user.roles, ["Administrador"]);
   return (
     <aside className="sidebar" aria-label="Navegação principal">
       <div className="brand-lockup"><img className="brand-logo" src="/ahbvc.png" alt="AHBVC" /><div><strong>{productName}</strong><span>AHBVC · Critical Operations</span></div></div>
@@ -506,14 +525,14 @@ function AppSidebar({ active }: { active: NavigationPage }) {
 function ProtectedApp({ mode }: { mode: "pilot" | "ops" }) {
   const { user } = useAuth();
   if (mode === "pilot") {
-    return user.roles.some((role) => role === "Piloto" || role === "Administrador")
+    return hasAnyRole(user.roles, ["Piloto", "Administrador"])
       ? <PilotPage />
       : <PilotAccessDeniedPage />;
   }
   const path = window.location.pathname;
   if (path === "/stream") return <LiveStreamPage />;
   if (path === "/equipment") return <EquipmentPage />;
-  if (path === "/users") return user.roles.includes("Administrador") ? <UserManagementPage /> : <AccessDeniedPage />;
+  if (path === "/users") return hasAnyRole(user.roles, ["Administrador"]) ? <UserManagementPage /> : <AccessDeniedPage />;
   if (path.startsWith("/missions/")) return <MissionDetailPage missionId={path.split("/")[2] ?? ""} />;
   if (path === "/missions") return <MissionManagementPage />;
   if (path === "/history") return <FlightHistoryPage />;
@@ -925,7 +944,7 @@ function FlightHistoryPage() {
 
 function LiveStreamPage() {
   const { user } = useAuth();
-  const canControl = user.roles.some((role) => ["Administrador", "Operador", "Piloto"].includes(role));
+  const canControl = hasAnyRole(user.roles, ["Administrador", "Operador", "Piloto"]);
   const [options, setOptions] = React.useState<LivestreamOption[]>([]);
   const [selectedVideoId, setSelectedVideoId] = React.useState("");
   const [quality, setQuality] = React.useState("0");
