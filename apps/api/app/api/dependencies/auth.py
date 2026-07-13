@@ -14,6 +14,7 @@ STREAM_ROLES = frozenset({"Administrador", "Operador", "Piloto"})
 ADMIN_ROLES = frozenset({"Administrador"})
 PILOT_ROLES = frozenset({"Administrador", "Piloto"})
 REPORT_ROLES = frozenset({"Administrador", "Operador", "Piloto"})
+OPERATIONS_WRITE_ROLES = frozenset({"Administrador", "Operador"})
 
 
 @dataclass(frozen=True)

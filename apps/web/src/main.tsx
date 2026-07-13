@@ -15,7 +15,9 @@ import {
   Mail,
   MapPin,
   Moon,
+  PlaneTakeoff,
   Play,
+  Plus,
   Radio,
   RefreshCw,
   Server,
@@ -30,7 +32,7 @@ import {
   Wifi,
   ZoomIn,
 } from "lucide-react";
-import { motion, useReducedMotion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import maplibregl from "maplibre-gl";
 
 import "./styles.css";
@@ -451,7 +453,7 @@ function LoginPage({ onAuthenticated }: { onAuthenticated: (user: AuthUser) => v
   );
 }
 
-type NavigationPage = "operations" | "history" | "stream" | "users";
+type NavigationPage = "operations" | "missions" | "history" | "stream" | "users";
 
 function AppSidebar({ active }: { active: NavigationPage }) {
   const { user, logout } = useAuth();
@@ -461,6 +463,7 @@ function AppSidebar({ active }: { active: NavigationPage }) {
       <div className="brand-lockup"><img className="brand-logo" src="/ahbvc.png" alt="AHBVC" /><div><strong>{productName}</strong><span>AHBVC · Critical Operations</span></div></div>
       <nav>
         <a className={`nav-link ${active === "operations" ? "active" : ""}`} href="/">Operações</a>
+        <a className={`nav-link ${active === "missions" ? "active" : ""}`} href="/missions">Missões</a>
         <a className={`nav-link ${active === "history" ? "active" : ""}`} href="/history">Histórico de voo</a>
         <a className={`nav-link ${active === "stream" ? "active" : ""}`} href="/stream">Livestream</a>
         {isAdmin ? <a className={`nav-link ${active === "users" ? "active" : ""}`} href="/users">Utilizadores</a> : null}
@@ -484,6 +487,7 @@ function ProtectedApp({ mode }: { mode: "pilot" | "ops" }) {
   const path = window.location.pathname;
   if (path === "/stream") return <LiveStreamPage />;
   if (path === "/users") return user.roles.includes("Administrador") ? <UserManagementPage /> : <AccessDeniedPage />;
+  if (path === "/missions") return <MissionManagementPage />;
   if (path === "/history") return <FlightHistoryPage />;
   return <OpsDashboard />;
 }
@@ -609,10 +613,10 @@ function OpsDashboard() {
     { label: "Livestreams", description: summary?.counters.active_streams ? `${summary.counters.active_streams} transmissão ativa` : "Sem transmissão ativa", online: true, icon: Video },
   ];
   const quickActions = [
+    { label: "Gerir missões", detail: "Ocorrências e vários voos", href: "/missions", icon: PlaneTakeoff },
     { label: "Abrir livestream", detail: "Iniciar ou acompanhar vídeo", href: "/stream", icon: Video },
     { label: "Consultar voos", detail: "Rotas e telemetria histórica", href: "/history", icon: History },
-    { label: "Configurar Pilot 2", detail: "Portal DJI Cloud Services", href: "/pilot", icon: Radio },
-    { label: "Documentação", detail: "Estado e configuração técnica", href: "/docs", icon: ShieldCheck },
+    { label: "Configurar Pilot 2", detail: "Portal DJI Cloud Services", href: "https://pilot.uas.ahbvc.org.pt", icon: Radio },
   ];
 
   return (
@@ -1075,6 +1079,187 @@ function TelemetryMap({ history, track }: { history: Telemetry[]; track: FlightT
 
 type ManagedUser = AuthUser & { is_active: boolean; invitation_status: "pending" | "sent" | "failed" | "accepted" };
 
+type OperationalOccurrence = {
+  id: string;
+  code: string;
+  title: string;
+  status: string;
+  address: string | null;
+  external_source: string | null;
+  external_id: string | null;
+  started_at: string;
+  mission_count: number;
+};
+
+type OperationalMission = {
+  id: string;
+  occurrence_id: string | null;
+  occurrence_code: string | null;
+  occurrence_title: string | null;
+  title: string;
+  objective: string;
+  is_training: boolean;
+  status: string;
+  pilot_name: string | null;
+  created_at: string;
+  flight_count: number;
+};
+
+function MissionManagementPage() {
+  const { user } = useAuth();
+  const reduceMotion = useReducedMotion();
+  const canWrite = user.roles.some((role) => role === "Administrador" || role === "Operador");
+  const [occurrences, setOccurrences] = React.useState<OperationalOccurrence[]>([]);
+  const [missions, setMissions] = React.useState<OperationalMission[]>([]);
+  const [formMode, setFormMode] = React.useState<"occurrence" | "mission" | null>(null);
+  const [loading, setLoading] = React.useState(true);
+  const [submitting, setSubmitting] = React.useState(false);
+  const [message, setMessage] = React.useState<string | null>(null);
+  const [occurrenceCode, setOccurrenceCode] = React.useState("");
+  const [occurrenceTitle, setOccurrenceTitle] = React.useState("");
+  const [missionTitle, setMissionTitle] = React.useState("");
+  const [missionObjective, setMissionObjective] = React.useState("");
+  const [missionOccurrence, setMissionOccurrence] = React.useState("");
+  const [trainingMission, setTrainingMission] = React.useState(false);
+  const [addingFlight, setAddingFlight] = React.useState<string | null>(null);
+
+  const loadOperations = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      const [occurrenceResponse, missionResponse] = await Promise.all([
+        authenticatedFetch("/api/v1/operations/occurrences", { cache: "no-store" }),
+        authenticatedFetch("/api/v1/operations/missions", { cache: "no-store" }),
+      ]);
+      if (!occurrenceResponse.ok || !missionResponse.ok) throw new Error("Dados operacionais indisponíveis.");
+      setOccurrences((await occurrenceResponse.json()) as OperationalOccurrence[]);
+      setMissions((await missionResponse.json()) as OperationalMission[]);
+    } catch (reason) {
+      setMessage(reason instanceof Error ? reason.message : "Não foi possível carregar as missões.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => { void loadOperations(); }, [loadOperations]);
+
+  async function createOccurrence(event: React.FormEvent) {
+    event.preventDefault();
+    setSubmitting(true); setMessage(null);
+    try {
+      const response = await authenticatedFetch("/api/v1/operations/occurrences", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: occurrenceCode, title: occurrenceTitle }),
+      });
+      const result = (await response.json().catch(() => ({}))) as { detail?: string | Array<{ msg: string }> };
+      if (!response.ok) {
+        const detail = Array.isArray(result.detail) ? result.detail[0]?.msg : result.detail;
+        throw new Error(detail ?? "Não foi possível criar a ocorrência.");
+      }
+      setOccurrenceCode(""); setOccurrenceTitle(""); setFormMode(null);
+      setMessage("Ocorrência criada. Já pode associar uma missão.");
+      await loadOperations();
+    } catch (reason) {
+      setMessage(reason instanceof Error ? reason.message : "Não foi possível criar a ocorrência.");
+    } finally { setSubmitting(false); }
+  }
+
+  async function createMission(event: React.FormEvent) {
+    event.preventDefault();
+    setSubmitting(true); setMessage(null);
+    try {
+      const response = await authenticatedFetch("/api/v1/operations/missions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: missionTitle,
+          objective: missionObjective,
+          occurrence_id: trainingMission ? null : missionOccurrence || null,
+          is_training: trainingMission,
+        }),
+      });
+      const result = (await response.json().catch(() => ({}))) as { detail?: string | Array<{ msg: string }> };
+      if (!response.ok) {
+        const detail = Array.isArray(result.detail) ? result.detail[0]?.msg : result.detail;
+        throw new Error(detail ?? "Não foi possível criar a missão.");
+      }
+      setMissionTitle(""); setMissionObjective(""); setMissionOccurrence(""); setTrainingMission(false); setFormMode(null);
+      setMessage("Missão criada em rascunho.");
+      await loadOperations();
+    } catch (reason) {
+      setMessage(reason instanceof Error ? reason.message : "Não foi possível criar a missão.");
+    } finally { setSubmitting(false); }
+  }
+
+  async function addFlight(missionId: string) {
+    setAddingFlight(missionId); setMessage(null);
+    try {
+      const response = await authenticatedFetch(`/api/v1/operations/missions/${missionId}/flights`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const result = (await response.json().catch(() => ({}))) as { detail?: string };
+      if (!response.ok) throw new Error(result.detail ?? "Não foi possível adicionar o voo.");
+      setMessage("Novo voo planeado e associado à missão.");
+      await loadOperations();
+    } catch (reason) {
+      setMessage(reason instanceof Error ? reason.message : "Não foi possível adicionar o voo.");
+    } finally { setAddingFlight(null); }
+  }
+
+  const statusLabel: Record<string, string> = {
+    draft: "Rascunho", ready: "Pronta", active: "Em curso", completed: "Concluída",
+    aborted: "Abortada", archived: "Arquivada", planned: "Planeada", in_progress: "Em curso",
+  };
+
+  return (
+    <main className="app-shell">
+      <AppSidebar active="missions" />
+      <section className="workspace">
+        <header className="topbar">
+          <div><p className="eyebrow">Coordenação operacional</p><h1>Ocorrências e missões</h1></div>
+          <span className="status-pill online">{missions.length} missões · {occurrences.length} ocorrências</span>
+        </header>
+
+        <div className="operations-notice" role="note">
+          <ShieldCheck size={20} aria-hidden="true" />
+          <div><strong>Integração de ocorrências preparada</strong><span>A sincronização com o SaaS externo será ativada quando estiver disponível a documentação oficial da API. Até lá, os registos são locais.</span></div>
+        </div>
+
+        {canWrite ? <div className="operations-toolbar" aria-label="Criar registo operacional">
+          <button className={formMode === "occurrence" ? "active" : ""} type="button" onClick={() => setFormMode((current) => current === "occurrence" ? null : "occurrence")}><Plus size={18} />Nova ocorrência</button>
+          <button className={formMode === "mission" ? "active" : ""} type="button" onClick={() => setFormMode((current) => current === "mission" ? null : "mission")}><PlaneTakeoff size={18} />Nova missão</button>
+        </div> : null}
+
+        <AnimatePresence initial={false}>
+          {formMode === "occurrence" ? <motion.form className="panel operations-form" onSubmit={createOccurrence} initial={reduceMotion ? false : { opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={reduceMotion ? undefined : { opacity: 0, y: -8 }}>
+            <div className="panel-heading"><ShieldAlert size={20} /><div><h2>Criar ocorrência local</h2><span>Poderá ser reconciliada com o SaaS externo mais tarde.</span></div></div>
+            <div className="operations-form-grid"><label htmlFor="occurrence-code">Código<input id="occurrence-code" value={occurrenceCode} onChange={(event) => setOccurrenceCode(event.target.value)} placeholder="Ex.: OC-2026-001" required /></label><label htmlFor="occurrence-title">Designação<input id="occurrence-title" value={occurrenceTitle} onChange={(event) => setOccurrenceTitle(event.target.value)} placeholder="Incêndio urbano" required /></label></div>
+            <button className="primary-action" type="submit" disabled={submitting}>{submitting ? <CircleDashed className="spin" size={18} /> : <Plus size={18} />}{submitting ? "A criar..." : "Criar ocorrência"}</button>
+          </motion.form> : null}
+
+          {formMode === "mission" ? <motion.form className="panel operations-form" onSubmit={createMission} initial={reduceMotion ? false : { opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={reduceMotion ? undefined : { opacity: 0, y: -8 }}>
+            <div className="panel-heading"><PlaneTakeoff size={20} /><div><h2>Criar missão</h2><span>A missão começa como rascunho e pode conter vários voos.</span></div></div>
+            <div className="operations-form-grid"><label htmlFor="mission-title">Designação<input id="mission-title" value={missionTitle} onChange={(event) => setMissionTitle(event.target.value)} placeholder="Reconhecimento aéreo" required /></label><label htmlFor="mission-occurrence">Ocorrência<select id="mission-occurrence" value={missionOccurrence} onChange={(event) => setMissionOccurrence(event.target.value)} disabled={trainingMission} required={!trainingMission}><option value="">Selecionar ocorrência</option>{occurrences.filter((item) => item.status === "active").map((item) => <option key={item.id} value={item.id}>{item.code} · {item.title}</option>)}</select></label><label className="operations-objective" htmlFor="mission-objective">Objetivo<textarea id="mission-objective" value={missionObjective} onChange={(event) => setMissionObjective(event.target.value)} rows={3} placeholder="Objetivo operacional e informação a recolher" required /></label></div>
+            <label className="training-toggle"><input type="checkbox" checked={trainingMission} onChange={(event) => setTrainingMission(event.target.checked)} /><span><strong>Missão de treino</strong><small>Permite criar a missão sem ocorrência associada.</small></span></label>
+            <button className="primary-action" type="submit" disabled={submitting}>{submitting ? <CircleDashed className="spin" size={18} /> : <PlaneTakeoff size={18} />}{submitting ? "A criar..." : "Criar missão"}</button>
+          </motion.form> : null}
+        </AnimatePresence>
+
+        {message ? <p className="operations-message" role="status">{message}</p> : null}
+
+        <section className="panel missions-list" aria-label="Missões registadas">
+          <div className="panel-heading"><PlaneTakeoff size={20} /><div><h2>Missões registadas</h2><span>Cada missão agrega os seus voos, telemetria, streams e media.</span></div></div>
+          {loading ? <div className="dashboard-empty"><CircleDashed className="spin" size={24} /><strong>A carregar missões</strong></div> : missions.length ? <div className="mission-table" role="table">
+            {missions.map((mission) => <div className="mission-row" role="row" key={mission.id}><div className="mission-main"><strong>{mission.title}</strong><span>{mission.is_training ? "Treino" : mission.occurrence_code ? `${mission.occurrence_code} · ${mission.occurrence_title}` : "Sem ocorrência"}</span></div><span className={`mission-status status-${mission.status}`}>{statusLabel[mission.status] ?? mission.status}</span><div className="flight-count"><Radio size={16} /><strong>{mission.flight_count}</strong><span>{mission.flight_count === 1 ? "voo" : "voos"}</span></div><time dateTime={mission.created_at}>{new Date(mission.created_at).toLocaleDateString("pt-PT")}</time>{canWrite ? <motion.button className="add-flight-action" type="button" onClick={() => void addFlight(mission.id)} disabled={addingFlight === mission.id} whileTap={{ scale: 0.97 }} title="Adicionar voo planeado"><Plus size={17} />{addingFlight === mission.id ? "A adicionar" : "Adicionar voo"}</motion.button> : null}</div>)}
+          </div> : <div className="dashboard-empty"><PlaneTakeoff size={26} /><strong>Sem missões registadas</strong><span>Crie a primeira ocorrência e associe-lhe uma missão operacional.</span></div>}
+        </section>
+      </section>
+    </main>
+  );
+}
+
 function UserManagementPage() {
   const [users, setUsers] = React.useState<ManagedUser[]>([]);
   const [email, setEmail] = React.useState("");
@@ -1157,7 +1342,7 @@ function PilotPage() {
   const { user, logout } = useAuth();
   const reduceMotion = useReducedMotion();
   const [config, setConfig] = React.useState<JsBridgeConfig | null>(null);
-  const [steps, setSteps] = React.useState<SetupStep[]>(setupSteps);
+  const [, setSteps] = React.useState<SetupStep[]>(setupSteps);
   const [mqttState, setMqttState] = React.useState<"unknown" | "connected" | "disconnected">(
     "unknown",
   );

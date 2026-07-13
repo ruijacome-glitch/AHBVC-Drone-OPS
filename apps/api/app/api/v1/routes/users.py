@@ -98,7 +98,7 @@ async def _deliver_invitation(
 
 @router.get("", response_model=list[ManagedUserResponse])
 async def list_users(
-    _: Annotated[AuthenticatedUser, Depends(require_roles(ADMIN_ROLES))],
+    actor: Annotated[AuthenticatedUser, Depends(require_roles(ADMIN_ROLES))],
 ) -> list[ManagedUserResponse]:
     async with AsyncSessionLocal() as session:
         result = await session.execute(
@@ -118,10 +118,12 @@ async def list_users(
                 FROM users u
                 LEFT JOIN user_roles ur ON ur.user_id = u.id
                 LEFT JOIN roles r ON r.id = ur.role_id
+                WHERE :organisation_id IS NULL OR u.organisation_id = :organisation_id
                 GROUP BY u.id
                 ORDER BY u.full_name
                 """
-            )
+            ),
+            {"organisation_id": actor.organisation_id},
         )
     return [ManagedUserResponse(**dict(row)) for row in result.mappings().all()]
 
@@ -191,7 +193,10 @@ async def create_user(
                 },
             )
     except IntegrityError as exc:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already exists") from exc
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Email already exists",
+        ) from exc
 
     invitation_status = await _deliver_invitation(
         invitation_id, row["email"], row["full_name"], roles, raw_token

@@ -1284,6 +1284,98 @@ h1 {
 .role-badges span { padding: 4px 7px; border-radius: 999px; background: #eff6ff; color: #1d4ed8; font-size: 0.68rem; font-weight: 700; }
 .service-state.is-error { background: #fff7ed; color: #c2410c; }
 
+.operations-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  background: #eff6ff;
+  color: #1e3a8a;
+}
+
+.operations-notice > svg { flex: 0 0 auto; margin-top: 1px; }
+.operations-notice > div { display: grid; gap: 3px; }
+.operations-notice span { color: #31558f; font-size: 0.82rem; line-height: 1.45; }
+
+.operations-toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.operations-toolbar button,
+.add-flight-action {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 13px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-foreground);
+  cursor: pointer;
+  font-weight: 700;
+  transition: border-color 180ms ease, background-color 180ms ease, color 180ms ease;
+}
+
+.operations-toolbar button:hover,
+.operations-toolbar button.active,
+.add-flight-action:hover { border-color: #fca5a5; background: #fff1f2; color: #991b1b; }
+.operations-toolbar button:focus-visible,
+.add-flight-action:focus-visible { outline: 3px solid rgba(37, 99, 235, 0.24); outline-offset: 2px; }
+.add-flight-action:disabled { cursor: wait; opacity: 0.62; }
+
+.operations-form { display: grid; gap: 16px; margin-bottom: 16px; }
+.operations-form .primary-action { width: auto; justify-self: start; padding: 0 18px; }
+.operations-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.operations-form-grid label { display: grid; gap: 6px; color: var(--color-foreground); font-size: 0.84rem; font-weight: 700; }
+.operations-form-grid input,
+.operations-form-grid select,
+.operations-form-grid textarea {
+  width: 100%;
+  min-height: 44px;
+  padding: 9px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-foreground);
+  resize: vertical;
+}
+.operations-form-grid input:focus,
+.operations-form-grid select:focus,
+.operations-form-grid textarea:focus { border-color: var(--color-accent); outline: 3px solid rgba(37, 99, 235, 0.16); }
+.operations-objective { grid-column: 1 / -1; }
+.training-toggle { display: flex; width: fit-content; min-height: 52px; align-items: center; gap: 10px; padding: 9px 11px; border: 1px solid var(--color-border); border-radius: 8px; cursor: pointer; }
+.training-toggle input { width: 18px; height: 18px; accent-color: var(--color-primary); }
+.training-toggle span { display: grid; gap: 2px; }
+.training-toggle small { color: var(--color-muted); }
+.operations-message { margin: 0 0 16px; padding: 11px 13px; border-left: 3px solid var(--color-accent); background: var(--color-surface); color: var(--color-foreground); font-weight: 600; }
+
+.missions-list { min-width: 0; }
+.mission-table { display: grid; margin-top: 12px; }
+.mission-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.5fr) minmax(92px, auto) 86px 92px minmax(130px, auto);
+  min-height: 76px;
+  align-items: center;
+  gap: 14px;
+  border-top: 1px solid var(--color-border);
+}
+.mission-main { display: grid; min-width: 0; gap: 3px; }
+.mission-main strong,
+.mission-main span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mission-main span,
+.mission-row time { color: var(--color-muted); font-size: 0.78rem; }
+.mission-status { justify-self: start; padding: 5px 8px; border-radius: 999px; background: #f1f5f9; color: #475569; font-size: 0.7rem; font-weight: 800; }
+.mission-status.status-active,
+.mission-status.status-ready { background: #dcfce7; color: #166534; }
+.mission-status.status-aborted { background: #fee2e2; color: #991b1b; }
+.mission-status.status-completed,
+.mission-status.status-archived { background: #e0e7ff; color: #3730a3; }
+.flight-count { display: flex; align-items: center; gap: 5px; color: var(--color-muted); }
+.flight-count strong { color: var(--color-foreground); }
+.flight-count span { font-size: 0.74rem; }
+
 :root[data-theme="dark"] .sidebar {
   background: #111820;
 }
@@ -1306,6 +1398,18 @@ h1 {
   background: #351c22;
   color: #fca5a5;
 }
+
+:root[data-theme="dark"] .operations-notice { border-color: #284f7d; background: #15283d; color: #bfdbfe; }
+:root[data-theme="dark"] .operations-notice span { color: #93b9e8; }
+:root[data-theme="dark"] .operations-toolbar button:hover,
+:root[data-theme="dark"] .operations-toolbar button.active,
+:root[data-theme="dark"] .add-flight-action:hover { border-color: #7f3945; background: #351c22; color: #fca5a5; }
+:root[data-theme="dark"] .mission-status { background: #26313e; color: #cbd5e1; }
+:root[data-theme="dark"] .mission-status.status-active,
+:root[data-theme="dark"] .mission-status.status-ready { background: #173526; color: #86efac; }
+:root[data-theme="dark"] .mission-status.status-aborted { background: #3b1d24; color: #fca5a5; }
+:root[data-theme="dark"] .mission-status.status-completed,
+:root[data-theme="dark"] .mission-status.status-archived { background: #25294d; color: #c7d2fe; }
 
 :root[data-theme="dark"] .offline,
 :root[data-theme="dark"] .service-state.is-offline {
@@ -1472,9 +1576,16 @@ h1 {
   .telemetry-facts,
   .stream-layout,
   .dashboard-grid,
-  .users-layout {
+  .users-layout,
+  .operations-form-grid {
     grid-template-columns: 1fr;
   }
+
+  .operations-objective { grid-column: auto; }
+  .mission-row { grid-template-columns: minmax(0, 1fr) auto; padding: 12px 0; }
+  .mission-row .flight-count,
+  .mission-row time { grid-column: 1; }
+  .mission-row .add-flight-action { grid-column: 2; grid-row: 2 / span 2; }
 
   .dashboard-metrics,
   .quick-action-grid {

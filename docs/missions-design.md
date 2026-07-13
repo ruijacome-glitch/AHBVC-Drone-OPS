@@ -1,7 +1,7 @@
 # Mission workflow design
 
-This document defines the proposed operational model before mission CRUD is
-implemented. A mission is an intentional operational record, not merely a
+This document defines the operational model used by the initial mission CRUD.
+A mission is an intentional operational record, not merely a
 period in which telemetry was received.
 
 ## Core relationships
@@ -90,10 +90,20 @@ create a new report version instead of overwriting the previous document.
 
 ## Delivery sequence
 
-1. Extend mission schema and implement audited state transitions.
-2. Build occurrence and mission CRUD with resource assignment.
+1. **In progress:** extend the mission schema, add immutable creation events
+   and model multiple `flights` per mission.
+2. **In progress:** build local occurrence and mission creation/listing with
+   organisation isolation and resource-assignment fields.
 3. Implement readiness validation and start/complete commands.
 4. Associate incoming telemetry through active pilot/device sessions.
 5. Add mission timeline, checklist and operational notes.
 6. Generate and approve versioned mission reports.
 7. Add multi-crew assignments and advanced incident workflows.
+
+## External occurrence source
+
+Migration `006_operations_workflow.sql` reserves `external_source`,
+`external_id` and `external_payload` on occurrences. No connector, endpoint or
+payload for the external occurrence SaaS is assumed. The adapter will be added
+only after its official API contract, authentication method, pagination,
+filtering and update semantics are available.

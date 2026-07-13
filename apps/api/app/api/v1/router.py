@@ -1,7 +1,17 @@
 from fastapi import APIRouter, Depends
 
 from app.api.dependencies.auth import ADMIN_ROLES, ALL_ROLES, require_roles
-from app.api.v1.routes import auth, dashboard, dji, fleet, livestream, reports, system, users
+from app.api.v1.routes import (
+    auth,
+    dashboard,
+    dji,
+    fleet,
+    livestream,
+    operations,
+    reports,
+    system,
+    users,
+)
 from app.api.v1.routes import map as map_routes
 
 api_router = APIRouter()
@@ -23,4 +33,5 @@ api_router.include_router(
 api_router.include_router(map_routes.router)
 api_router.include_router(livestream.router)
 api_router.include_router(reports.router)
+api_router.include_router(operations.router)
 api_router.include_router(dashboard.router, dependencies=[Depends(require_roles(ALL_ROLES))])

@@ -1,9 +1,10 @@
 from datetime import datetime
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from sqlalchemy import text
 
+from app.api.dependencies.auth import AuthenticatedUser, current_user
 from app.db.session import AsyncSessionLocal
 from app.services.dji_mqtt import dji_mqtt_consumer
 
@@ -20,7 +21,9 @@ def _serialize_activity(row: Any) -> dict[str, object]:
 
 
 @router.get("/summary")
-async def dashboard_summary() -> dict[str, object]:
+async def dashboard_summary(
+    user: Annotated[AuthenticatedUser, Depends(current_user)],
+) -> dict[str, object]:
     """Return aggregate operational data without exposing aircraft telemetry."""
     async with AsyncSessionLocal() as session:
         counters = (
@@ -28,14 +31,42 @@ async def dashboard_summary() -> dict[str, object]:
                 text(
                     """
                     SELECT
-                      (SELECT COUNT(*) FROM occurrences WHERE status = 'active') AS active_occurrences,
-                      (SELECT COUNT(*) FROM missions WHERE status IN ('active', 'in_progress')) AS active_missions,
-                      (SELECT COUNT(*) FROM flight_tracks
-                         WHERE started_at >= date_trunc('day', now() AT TIME ZONE 'UTC')) AS flights_today,
-                      (SELECT COUNT(*) FROM flight_tracks) AS total_flights,
-                      (SELECT COUNT(*) FROM livestreams WHERE status = 'online') AS active_streams
+                      (SELECT COUNT(*) FROM occurrences
+                         WHERE status = 'active'
+                           AND (:organisation_id IS NULL OR
+                                organisation_id = :organisation_id)
+                      ) AS active_occurrences,
+                      (SELECT COUNT(*) FROM missions
+                         WHERE status IN ('active', 'in_progress')
+                           AND (:organisation_id IS NULL OR
+                                organisation_id = :organisation_id)
+                      ) AS active_missions,
+                      (SELECT COUNT(*) FROM flight_tracks ft
+                         LEFT JOIN missions m ON m.id = ft.mission_id
+                         LEFT JOIN drones d ON d.id = ft.drone_id
+                         WHERE ft.started_at >= date_trunc('day', now() AT TIME ZONE 'UTC')
+                           AND (:organisation_id IS NULL OR COALESCE(
+                                m.organisation_id, d.organisation_id
+                           ) = :organisation_id)
+                      ) AS flights_today,
+                      (SELECT COUNT(*) FROM flight_tracks ft
+                         LEFT JOIN missions m ON m.id = ft.mission_id
+                         LEFT JOIN drones d ON d.id = ft.drone_id
+                         WHERE :organisation_id IS NULL OR COALESCE(
+                               m.organisation_id, d.organisation_id
+                         ) = :organisation_id
+                      ) AS total_flights,
+                      (SELECT COUNT(*) FROM livestreams l
+                         LEFT JOIN missions m ON m.id = l.mission_id
+                         LEFT JOIN drones d ON d.id = l.drone_id
+                         WHERE l.status = 'online'
+                           AND (:organisation_id IS NULL OR COALESCE(
+                                m.organisation_id, d.organisation_id
+                           ) = :organisation_id)
+                      ) AS active_streams
                     """
-                )
+                ),
+                {"organisation_id": user.organisation_id},
             )
         ).mappings().one()
         activities = (
@@ -47,27 +78,40 @@ async def dashboard_summary() -> dict[str, object]:
                       SELECT 'occurrence' AS activity_type,
                              'Ocorrência criada' AS title,
                              code || ' · ' || title AS detail,
-                             started_at AS occurred_at
+                             started_at AS occurred_at,
+                             organisation_id
                       FROM occurrences
                       UNION ALL
                       SELECT 'flight' AS activity_type,
                              'Voo registado' AS title,
-                             CASE WHEN ended_at IS NULL THEN 'Em curso' ELSE 'Concluído' END AS detail,
-                             started_at AS occurred_at
-                      FROM flight_tracks
-                      WHERE started_at IS NOT NULL
+                             CASE WHEN ended_at IS NULL
+                               THEN 'Em curso' ELSE 'Concluído'
+                             END AS detail,
+                             ft.started_at AS occurred_at,
+                             COALESCE(m.organisation_id, d.organisation_id) AS organisation_id
+                      FROM flight_tracks ft
+                      LEFT JOIN missions m ON m.id = ft.mission_id
+                      LEFT JOIN drones d ON d.id = ft.drone_id
+                      WHERE ft.started_at IS NOT NULL
                       UNION ALL
                       SELECT 'stream' AS activity_type,
                              'Livestream iniciado' AS title,
-                             CASE WHEN status = 'online' THEN 'Em direto' ELSE 'Terminado' END AS detail,
-                             started_at AS occurred_at
-                      FROM livestreams
-                      WHERE started_at IS NOT NULL
+                             CASE WHEN status = 'online'
+                               THEN 'Em direto' ELSE 'Terminado'
+                             END AS detail,
+                             l.started_at AS occurred_at,
+                             COALESCE(m.organisation_id, d.organisation_id) AS organisation_id
+                      FROM livestreams l
+                      LEFT JOIN missions m ON m.id = l.mission_id
+                      LEFT JOIN drones d ON d.id = l.drone_id
+                      WHERE l.started_at IS NOT NULL
                     ) activity
+                    WHERE :organisation_id IS NULL OR organisation_id = :organisation_id
                     ORDER BY occurred_at DESC
                     LIMIT 8
                     """
-                )
+                ),
+                {"organisation_id": user.organisation_id},
             )
         ).mappings().all()
 
