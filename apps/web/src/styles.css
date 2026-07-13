@@ -955,8 +955,8 @@ h1 {
 .share-status.active { color: #15803d; border-color: color-mix(in srgb, #15803d 30%, var(--color-border)); }
 .share-status.inactive { color: var(--color-muted); }
 .danger-action { color: #b91c1c; }
-.public-share-page { display: grid; min-height: 100dvh; place-items: center; padding: 24px; background: var(--color-background); }
-.public-share-card { width: min(100%, 920px); padding: 24px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-surface); box-shadow: var(--shadow-soft); }
+.public-share-page { display: grid; min-height: 100dvh; place-items: start stretch; padding: clamp(12px, 2vw, 28px); background: var(--color-background); }
+.public-share-card { width: 100%; max-width: none; padding: clamp(16px, 2vw, 28px); border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-surface); box-shadow: var(--shadow-soft); }
 .public-share-heading { display: grid; gap: 4px; padding: 24px 0 16px; }
 .public-share-heading h1 { margin: 0; }
 .public-share-heading > span { color: var(--color-muted); font-size: 0.82rem; }
