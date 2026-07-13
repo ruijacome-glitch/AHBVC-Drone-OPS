@@ -118,7 +118,8 @@ async def list_users(
                 FROM users u
                 LEFT JOIN user_roles ur ON ur.user_id = u.id
                 LEFT JOIN roles r ON r.id = ur.role_id
-                WHERE :organisation_id IS NULL OR u.organisation_id = :organisation_id
+                WHERE CAST(:organisation_id AS uuid) IS NULL
+                   OR u.organisation_id = CAST(:organisation_id AS uuid)
                 GROUP BY u.id
                 ORDER BY u.full_name
                 """
@@ -225,7 +226,8 @@ async def resend_invitation(
                        ) AS roles
                 FROM users u
                 WHERE u.id = :user_id
-                  AND (:organisation_id IS NULL OR u.organisation_id = :organisation_id)
+                  AND (CAST(:organisation_id AS uuid) IS NULL OR
+                       u.organisation_id = CAST(:organisation_id AS uuid))
                 """
             ),
             {"user_id": user_id, "organisation_id": actor.organisation_id},

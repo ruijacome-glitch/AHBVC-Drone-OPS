@@ -177,7 +177,8 @@ async def list_occurrences(
             text(
                 OCCURRENCE_SELECT
                 + """
-                WHERE (:organisation_id IS NULL OR o.organisation_id = :organisation_id)
+                WHERE (CAST(:organisation_id AS uuid) IS NULL OR
+                       o.organisation_id = CAST(:organisation_id AS uuid))
                 GROUP BY o.id
                 ORDER BY (o.status = 'active') DESC, o.started_at DESC
                 """
@@ -245,7 +246,8 @@ async def list_missions(
             text(
                 MISSION_SELECT
                 + """
-                WHERE (:organisation_id IS NULL OR m.organisation_id = :organisation_id)
+                WHERE (CAST(:organisation_id AS uuid) IS NULL OR
+                       m.organisation_id = CAST(:organisation_id AS uuid))
                 GROUP BY m.id, o.id, u.id
                 ORDER BY (m.status IN ('active', 'ready')) DESC, m.created_at DESC
                 """
@@ -272,7 +274,7 @@ async def create_mission(
                 text(
                     """
                     SELECT id FROM occurrences
-                    WHERE id = :id AND organisation_id = :organisation_id
+                    WHERE id = :id AND organisation_id = CAST(:organisation_id AS uuid)
                     """
                 ),
                 {"id": payload.occurrence_id, "organisation_id": organisation_id},
@@ -286,15 +288,15 @@ async def create_mission(
                 SELECT
                   (:drone_id IS NULL OR EXISTS (
                     SELECT 1 FROM drones
-                    WHERE id = :drone_id AND organisation_id = :organisation_id
+                    WHERE id = :drone_id AND organisation_id = CAST(:organisation_id AS uuid)
                   )) AS drone_ok,
                   (:controller_id IS NULL OR EXISTS (
                     SELECT 1 FROM controllers
-                    WHERE id = :controller_id AND organisation_id = :organisation_id
+                    WHERE id = :controller_id AND organisation_id = CAST(:organisation_id AS uuid)
                   )) AS controller_ok,
                   (:pilot_id IS NULL OR EXISTS (
                     SELECT 1 FROM users
-                    WHERE id = :pilot_id AND organisation_id = :organisation_id
+                    WHERE id = :pilot_id AND organisation_id = CAST(:organisation_id AS uuid)
                   )) AS pilot_ok
                 """
             ),
@@ -373,7 +375,8 @@ async def list_flights(
                        f.started_at, f.ended_at, f.created_at
                 FROM flights f
                 WHERE f.mission_id = :mission_id
-                  AND (:organisation_id IS NULL OR f.organisation_id = :organisation_id)
+                  AND (CAST(:organisation_id AS uuid) IS NULL OR
+                       f.organisation_id = CAST(:organisation_id AS uuid))
                 ORDER BY f.sequence_number
                 """
             ),
@@ -400,7 +403,7 @@ async def create_flight(
                 """
                 SELECT id, drone_id, controller_id, pilot_id
                 FROM missions
-                WHERE id = :id AND organisation_id = :organisation_id
+                WHERE id = :id AND organisation_id = CAST(:organisation_id AS uuid)
                 FOR UPDATE
                 """
             ),

@@ -59,7 +59,8 @@ async def list_reports(
                 """
                 SELECT id, mission_id, report_type, title, size_bytes, generated_at
                 FROM report_documents
-                WHERE (:organisation_id IS NULL OR organisation_id = :organisation_id)
+                WHERE (CAST(:organisation_id AS uuid) IS NULL OR
+                       organisation_id = CAST(:organisation_id AS uuid))
                   AND (:mission_id IS NULL OR mission_id = :mission_id)
                 ORDER BY generated_at DESC
                 LIMIT 100
@@ -98,8 +99,9 @@ async def _mission_data(mission_id: UUID, user: AuthenticatedUser) -> dict[str, 
                 LEFT JOIN telemetry_points tp ON tp.mission_id = m.id
                 WHERE m.id = :mission_id
                   AND (
-                    :organisation_id IS NULL OR
-                    COALESCE(o.organisation_id, d.organisation_id, c.organisation_id) = :organisation_id
+                    CAST(:organisation_id AS uuid) IS NULL OR
+                    COALESCE(o.organisation_id, d.organisation_id, c.organisation_id) =
+                      CAST(:organisation_id AS uuid)
                   )
                 GROUP BY m.id, o.code, o.title, o.organisation_id,
                          d.organisation_id, c.organisation_id,
@@ -208,7 +210,8 @@ async def download_report(
                 SELECT organisation_id, storage_bucket, storage_key, title
                 FROM report_documents
                 WHERE id = :report_id
-                  AND (:organisation_id IS NULL OR organisation_id = :organisation_id)
+                  AND (CAST(:organisation_id AS uuid) IS NULL OR
+                       organisation_id = CAST(:organisation_id AS uuid))
                 """
             ),
             {"report_id": report_id, "organisation_id": user.organisation_id},
@@ -241,7 +244,8 @@ async def email_report(
                 SELECT organisation_id, storage_bucket, storage_key, title
                 FROM report_documents
                 WHERE id = :report_id
-                  AND (:organisation_id IS NULL OR organisation_id = :organisation_id)
+                  AND (CAST(:organisation_id AS uuid) IS NULL OR
+                       organisation_id = CAST(:organisation_id AS uuid))
                 """
             ),
             {"report_id": report_id, "organisation_id": user.organisation_id},

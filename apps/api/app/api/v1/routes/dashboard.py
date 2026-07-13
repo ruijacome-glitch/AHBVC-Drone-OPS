@@ -33,36 +33,36 @@ async def dashboard_summary(
                     SELECT
                       (SELECT COUNT(*) FROM occurrences
                          WHERE status = 'active'
-                           AND (:organisation_id IS NULL OR
-                                organisation_id = :organisation_id)
+                           AND (CAST(:organisation_id AS uuid) IS NULL OR
+                                organisation_id = CAST(:organisation_id AS uuid))
                       ) AS active_occurrences,
                       (SELECT COUNT(*) FROM missions
                          WHERE status IN ('active', 'in_progress')
-                           AND (:organisation_id IS NULL OR
-                                organisation_id = :organisation_id)
+                           AND (CAST(:organisation_id AS uuid) IS NULL OR
+                                organisation_id = CAST(:organisation_id AS uuid))
                       ) AS active_missions,
                       (SELECT COUNT(*) FROM flight_tracks ft
                          LEFT JOIN missions m ON m.id = ft.mission_id
                          LEFT JOIN drones d ON d.id = ft.drone_id
                          WHERE ft.started_at >= date_trunc('day', now() AT TIME ZONE 'UTC')
-                           AND (:organisation_id IS NULL OR COALESCE(
+                           AND (CAST(:organisation_id AS uuid) IS NULL OR COALESCE(
                                 m.organisation_id, d.organisation_id
-                           ) = :organisation_id)
+                           ) = CAST(:organisation_id AS uuid))
                       ) AS flights_today,
                       (SELECT COUNT(*) FROM flight_tracks ft
                          LEFT JOIN missions m ON m.id = ft.mission_id
                          LEFT JOIN drones d ON d.id = ft.drone_id
-                         WHERE :organisation_id IS NULL OR COALESCE(
+                         WHERE CAST(:organisation_id AS uuid) IS NULL OR COALESCE(
                                m.organisation_id, d.organisation_id
-                         ) = :organisation_id
+                         ) = CAST(:organisation_id AS uuid)
                       ) AS total_flights,
                       (SELECT COUNT(*) FROM livestreams l
                          LEFT JOIN missions m ON m.id = l.mission_id
                          LEFT JOIN drones d ON d.id = l.drone_id
                          WHERE l.status = 'online'
-                           AND (:organisation_id IS NULL OR COALESCE(
+                           AND (CAST(:organisation_id AS uuid) IS NULL OR COALESCE(
                                 m.organisation_id, d.organisation_id
-                           ) = :organisation_id)
+                           ) = CAST(:organisation_id AS uuid))
                       ) AS active_streams
                     """
                 ),
@@ -106,7 +106,8 @@ async def dashboard_summary(
                       LEFT JOIN drones d ON d.id = l.drone_id
                       WHERE l.started_at IS NOT NULL
                     ) activity
-                    WHERE :organisation_id IS NULL OR organisation_id = :organisation_id
+                    WHERE CAST(:organisation_id AS uuid) IS NULL
+                       OR organisation_id = CAST(:organisation_id AS uuid)
                     ORDER BY occurred_at DESC
                     LIMIT 8
                     """
