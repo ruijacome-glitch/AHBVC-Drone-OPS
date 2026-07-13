@@ -21,7 +21,7 @@ ALLOWED_PERMISSIONS = {"video", "map", "telemetry", "markers", "history"}
 
 class CreateShareRequest(BaseModel):
     label: str = Field(min_length=2, max_length=120)
-    gateway_sn: str = Field(min_length=3, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
+    gateway_sn: str | None = Field(default=None, min_length=3, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
     video_id: str | None = Field(default=None, max_length=200)
     permissions: set[str] = Field(default_factory=lambda: {"video"})
     expires_in_hours: int | None = Field(default=8, ge=1, le=87600)
@@ -30,6 +30,7 @@ class CreateShareRequest(BaseModel):
     video_ids: list[str] = Field(default_factory=list, max_length=64)
     sources: list[dict[str, object]] = Field(default_factory=list, max_length=16)
     aircraft_sn: str | None = Field(default=None, max_length=64)
+    aircraft_sns: list[str] = Field(default_factory=list, max_length=16)
     mission_id: UUID | None = None
 
 
@@ -54,24 +55,70 @@ async def create_share_link(
     if user.organisation_id is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User has no organisation")
 
-    gateway_sns = list(dict.fromkeys(payload.gateway_sns or [payload.gateway_sn]))
+    gateway_sns = list(dict.fromkeys(payload.gateway_sns or ([payload.gateway_sn] if payload.gateway_sn else [])))
     video_ids = list(dict.fromkeys(payload.video_ids or ([payload.video_id] if payload.video_id else [])))
     if payload.target_type == "aircraft" and not payload.aircraft_sn:
         raise HTTPException(status_code=422, detail="Aircraft serial is required")
     if payload.target_type == "mission" and not payload.mission_id:
         raise HTTPException(status_code=422, detail="Mission is required")
-    if not gateway_sns:
-        raise HTTPException(status_code=422, detail="At least one stream source is required")
     if payload.target_type == "stream" and not video_ids:
         raise HTTPException(status_code=422, detail="A video source is required for a single-stream link")
-    sources = payload.sources or [
-        {"gateway_sn": gateway_sn, "video_ids": video_ids}
-        for gateway_sn in gateway_sns
-    ]
 
     raw_token = token_urlsafe(48)
     expires_at = datetime.now(timezone.utc) + timedelta(hours=payload.expires_in_hours) if payload.expires_in_hours else None
     async with AsyncSessionLocal() as session, session.begin():
+        aircraft_sns = list(dict.fromkeys(payload.aircraft_sns or ([payload.aircraft_sn] if payload.aircraft_sn else [])))
+        if payload.target_type == "stream" and video_ids:
+            aircraft_sns.extend(video_id.split("/", 1)[0] for video_id in video_ids if "/" in video_id)
+        aircraft_sns = list(dict.fromkeys(aircraft_sns))
+        if not gateway_sns and aircraft_sns:
+            result = await session.execute(
+                text(
+                    """
+                    SELECT DISTINCT c.gateway_sn
+                    FROM drones d
+                    JOIN controllers c ON c.id = d.controller_id
+                    WHERE d.organisation_id = CAST(:organisation_id AS uuid)
+                      AND d.serial_number = ANY(:aircraft_sns)
+                    """
+                ),
+                {"organisation_id": user.organisation_id, "aircraft_sns": aircraft_sns},
+            )
+            gateway_sns.extend(row[0] for row in result.fetchall())
+        if not gateway_sns and payload.mission_id:
+            result = await session.execute(
+                text(
+                    """
+                    SELECT DISTINCT c.gateway_sn
+                    FROM missions m
+                    LEFT JOIN drones d ON d.id = m.drone_id
+                    LEFT JOIN controllers c ON c.id = COALESCE(d.controller_id, m.controller_id)
+                    LEFT JOIN flights f ON f.mission_id = m.id
+                    LEFT JOIN drones fd ON fd.id = f.drone_id
+                    LEFT JOIN controllers fc ON fc.id = fd.controller_id
+                    WHERE m.id = :mission_id
+                      AND m.organisation_id = CAST(:organisation_id AS uuid)
+                      AND c.gateway_sn IS NOT NULL
+                    UNION
+                    SELECT DISTINCT fc.gateway_sn
+                    FROM missions m
+                    JOIN flights f ON f.mission_id = m.id
+                    JOIN drones fd ON fd.id = f.drone_id
+                    JOIN controllers fc ON fc.id = fd.controller_id
+                    WHERE m.id = :mission_id
+                      AND m.organisation_id = CAST(:organisation_id AS uuid)
+                    """
+                ),
+                {"mission_id": payload.mission_id, "organisation_id": user.organisation_id},
+            )
+            gateway_sns.extend(row[0] for row in result.fetchall())
+        gateway_sns = list(dict.fromkeys(gateway_sns))
+        if not gateway_sns:
+            raise HTTPException(status_code=422, detail="No gateway associated with the selected drone or mission")
+        sources = payload.sources or [
+            {"gateway_sn": gateway_sn, "video_ids": video_ids}
+            for gateway_sn in gateway_sns
+        ]
         if payload.mission_id:
             mission = await session.execute(
                 text(
@@ -114,6 +161,7 @@ async def create_share_link(
                     "video_ids": video_ids,
                     "sources": sources,
                     "aircraft_sn": payload.aircraft_sn,
+                    "aircraft_sns": aircraft_sns,
                     "mission_id": str(payload.mission_id) if payload.mission_id else None,
                 }),
             },
