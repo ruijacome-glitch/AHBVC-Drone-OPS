@@ -304,15 +304,15 @@ async def create_mission(
             text(
                 """
                 SELECT
-                  (:drone_id IS NULL OR EXISTS (
+                  (CAST(:drone_id AS uuid) IS NULL OR EXISTS (
                     SELECT 1 FROM drones
                     WHERE id = :drone_id AND organisation_id = CAST(:organisation_id AS uuid)
                   )) AS drone_ok,
-                  (:controller_id IS NULL OR EXISTS (
+                  (CAST(:controller_id AS uuid) IS NULL OR EXISTS (
                     SELECT 1 FROM controllers
                     WHERE id = :controller_id AND organisation_id = CAST(:organisation_id AS uuid)
                   )) AS controller_ok,
-                  (:pilot_id IS NULL OR EXISTS (
+                  (CAST(:pilot_id AS uuid) IS NULL OR EXISTS (
                     SELECT 1 FROM users
                     WHERE id = :pilot_id AND organisation_id = CAST(:organisation_id AS uuid)
                   )) AS pilot_ok
