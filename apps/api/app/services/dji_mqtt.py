@@ -230,6 +230,8 @@ class DjiMqttConsumer:
                 self._apply_topology_update(sn, payload, now)
             elif parts[:2] == ["thing", "product"] and len(parts) >= 4 and parts[3] == "osd":
                 self._persist_osd_message(sn, payload, message.topic)
+            elif parts[:2] == ["thing", "product"] and len(parts) >= 4 and parts[3] == "state":
+                self._persist_state_message(sn, payload)
 
             data = payload.get("data")
             if isinstance(data, dict) and isinstance(data.get("live_capacity"), dict):
@@ -280,6 +282,40 @@ class DjiMqttConsumer:
         telemetry = normalize_osd(device_sn, gateway_sn, payload, model)
         self._schedule_telemetry_insert(telemetry, topic, payload, device_sn)
 
+    def _persist_state_message(self, device_sn: str, payload: dict[str, Any]) -> None:
+        data = payload.get("data")
+        if not isinstance(data, dict) or not isinstance(data.get("payloads"), list):
+            return
+        loop = self._async_loop
+        if loop is None or loop.is_closed():
+            return
+        for item in data["payloads"]:
+            if not isinstance(item, dict) or not isinstance(item.get("sn"), str):
+                continue
+            asyncio.run_coroutine_threadsafe(
+                self._upsert_payload(device_sn, item),
+                loop,
+            )
+
+    async def _upsert_payload(self, drone_sn: str, payload: dict[str, Any]) -> None:
+        async with AsyncSessionLocal() as session, session.begin():
+            await session.execute(
+                text(
+                    """
+                    INSERT INTO payloads (drone_id, serial_number, model, payload_type)
+                    SELECT d.id, :serial_number, COALESCE(:payload_index, 'DJI payload'), 'payload'
+                    FROM drones d
+                    WHERE d.serial_number = :drone_sn
+                    ON CONFLICT DO NOTHING
+                    """
+                ),
+                {
+                    "drone_sn": drone_sn,
+                    "serial_number": payload["sn"],
+                    "payload_index": payload.get("payload_index"),
+                },
+            )
+
     def _schedule_telemetry_insert(
         self,
         telemetry: Any,
@@ -311,9 +347,11 @@ class DjiMqttConsumer:
             await session.execute(
                 text(
                     """
-                    INSERT INTO controllers (gateway_sn, callsign, online_status, last_seen_at)
-                    VALUES (:gateway_sn, :callsign, 'online', :observed_at)
+                    INSERT INTO controllers (organisation_id, gateway_sn, callsign, online_status, last_seen_at)
+                    SELECT (SELECT id FROM organisations ORDER BY created_at LIMIT 1),
+                           :gateway_sn, :callsign, 'online', :observed_at
                     ON CONFLICT (gateway_sn) DO UPDATE SET
+                      organisation_id = COALESCE(controllers.organisation_id, EXCLUDED.organisation_id),
                       online_status = 'online', last_seen_at = EXCLUDED.last_seen_at
                     """
                 ),
@@ -323,10 +361,11 @@ class DjiMqttConsumer:
             await session.execute(
                 text(
                     """
-                    INSERT INTO drones (controller_id, serial_number, model, online_status, last_seen_at)
-                    SELECT id, :drone_serial, COALESCE(:model, :default_model), 'online', :observed_at
+                    INSERT INTO drones (organisation_id, controller_id, serial_number, model, online_status, last_seen_at)
+                    SELECT organisation_id, id, :drone_serial, COALESCE(:model, :default_model), 'online', :observed_at
                     FROM controllers WHERE gateway_sn = :gateway_sn
                     ON CONFLICT (serial_number) DO UPDATE SET
+                      organisation_id = COALESCE(drones.organisation_id, EXCLUDED.organisation_id),
                       controller_id = EXCLUDED.controller_id, model = EXCLUDED.model,
                       online_status = 'online', last_seen_at = EXCLUDED.last_seen_at
                     """

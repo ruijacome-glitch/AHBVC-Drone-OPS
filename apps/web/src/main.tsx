@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import {
   Activity,
+  Boxes,
   ArrowRight,
   Check,
   CheckCircle2,
@@ -19,6 +20,8 @@ import {
   PlaneTakeoff,
   Play,
   Plus,
+  Save,
+  Pencil,
   Radio,
   RefreshCw,
   Server,
@@ -148,6 +151,21 @@ type BridgeResult = {
 type MqttStatus = {
   connected: boolean;
   devices: Record<string, { message_count: number; last_message_at?: string | null }>;
+};
+
+type Equipment = {
+  equipment_type: "controller" | "drone" | "payload";
+  id: string;
+  serial_number: string;
+  callsign: string | null;
+  display_name: string | null;
+  model: string | null;
+  online_status: string | null;
+  last_seen_at: string | null;
+  drone_id: string | null;
+  payload_type: string | null;
+  status: string | null;
+  notes: string | null;
 };
 
 type DashboardSummary = {
@@ -454,7 +472,7 @@ function LoginPage({ onAuthenticated }: { onAuthenticated: (user: AuthUser) => v
   );
 }
 
-type NavigationPage = "operations" | "missions" | "history" | "stream" | "users";
+type NavigationPage = "operations" | "missions" | "history" | "stream" | "equipment" | "users";
 
 function AppSidebar({ active }: { active: NavigationPage }) {
   const { user, logout } = useAuth();
@@ -467,6 +485,7 @@ function AppSidebar({ active }: { active: NavigationPage }) {
         <a className={`nav-link ${active === "missions" ? "active" : ""}`} href="/missions">Missões</a>
         <a className={`nav-link ${active === "history" ? "active" : ""}`} href="/history">Histórico de voo</a>
         <a className={`nav-link ${active === "stream" ? "active" : ""}`} href="/stream">Livestream</a>
+        <a className={`nav-link ${active === "equipment" ? "active" : ""}`} href="/equipment">Equipamentos</a>
         {isAdmin ? <a className={`nav-link ${active === "users" ? "active" : ""}`} href="/users">Utilizadores</a> : null}
         <a className="nav-link" href="https://pilot.uas.ahbvc.org.pt">Pilot 2</a>
       </nav>
@@ -487,6 +506,7 @@ function ProtectedApp({ mode }: { mode: "pilot" | "ops" }) {
   }
   const path = window.location.pathname;
   if (path === "/stream") return <LiveStreamPage />;
+  if (path === "/equipment") return <EquipmentPage />;
   if (path === "/users") return user.roles.includes("Administrador") ? <UserManagementPage /> : <AccessDeniedPage />;
   if (path.startsWith("/missions/")) return <MissionDetailPage missionId={path.split("/")[2] ?? ""} />;
   if (path === "/missions") return <MissionManagementPage />;
@@ -496,6 +516,57 @@ function ProtectedApp({ mode }: { mode: "pilot" | "ops" }) {
 
 function AccessDeniedPage() {
   return <main className="app-shell"><AppSidebar active="operations" /><section className="workspace access-denied"><ShieldAlert size={36} /><h1>Acesso não autorizado</h1><p>O seu perfil não tem permissão para abrir esta área.</p><a className="primary-action" href="/">Voltar às operações</a></section></main>;
+}
+
+function EquipmentPage() {
+  const { user } = useAuth();
+  const canEdit = user.roles.some((role) => role === "Administrador" || role === "Operador");
+  const [equipment, setEquipment] = React.useState<Equipment[]>([]);
+  const [editing, setEditing] = React.useState<string | null>(null);
+  const [draft, setDraft] = React.useState({ callsign: "", display_name: "", notes: "", status: "" });
+  const [message, setMessage] = React.useState<string | null>(null);
+
+  const loadEquipment = React.useCallback(async () => {
+    const response = await authenticatedFetch("/api/v1/equipment", { cache: "no-store" });
+    if (response.ok) setEquipment(((await response.json()) as { equipment: Equipment[] }).equipment);
+  }, []);
+
+  React.useEffect(() => { void loadEquipment(); }, [loadEquipment]);
+
+  function beginEdit(item: Equipment) {
+    setEditing(item.id);
+    setDraft({ callsign: item.callsign ?? "", display_name: item.display_name ?? "", notes: item.notes ?? "", status: item.status ?? "available" });
+    setMessage(null);
+  }
+
+  async function save(item: Equipment) {
+    const response = await authenticatedFetch(`/api/v1/equipment/${item.equipment_type}/${item.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(draft),
+    });
+    if (!response.ok) {
+      const result = (await response.json().catch(() => ({}))) as { detail?: string };
+      setMessage(result.detail ?? "Não foi possível guardar o equipamento.");
+      return;
+    }
+    setEditing(null);
+    setMessage("Identificação operacional atualizada.");
+    await loadEquipment();
+  }
+
+  const typeLabel = { controller: "Comando", drone: "Aeronave", payload: "Payload" };
+  const grouped = ["controller", "drone", "payload"].map((type) => ({
+    type: type as Equipment["equipment_type"],
+    items: equipment.filter((item) => item.equipment_type === type),
+  }));
+
+  return <main className="app-shell"><AppSidebar active="equipment" /><section className="workspace">
+    <header className="topbar"><div><p className="eyebrow">Inventário operacional</p><h1>Equipamentos</h1><span className="mission-subtitle">Identidade técnica, indicativos e estado dos meios DJI.</span></div><span className="status-pill online">{equipment.length} registados</span></header>
+    <div className="operations-notice"><Boxes size={20} /><div><strong>SN técnico e indicativo operacional</strong><span>O número de série é mantido como identidade DJI. O indicativo pode ser alterado pela organização e aparece nas missões, mapas e relatórios.</span></div></div>
+    {message ? <p className="operations-message" role="status">{message}</p> : null}
+    <section className="equipment-grid">{grouped.map((group) => <section className="panel equipment-panel" key={group.type}><div className="panel-heading"><Boxes size={20} /><div><h2>{typeLabel[group.type]}</h2><span>{group.items.length} equipamento{group.items.length === 1 ? "" : "s"}</span></div></div>{group.items.length ? <div className="equipment-list">{group.items.map((item) => { const isEditing = editing === item.id; return <div className="equipment-row" key={`${item.equipment_type}-${item.id}`}><div className="equipment-icon"><Boxes size={18} /></div><div className="equipment-identity">{isEditing ? <><input aria-label="Indicativo" value={draft.callsign} onChange={(event) => setDraft({ ...draft, callsign: event.target.value })} placeholder="Indicativo" /><input aria-label="Nome operacional" value={draft.display_name} onChange={(event) => setDraft({ ...draft, display_name: event.target.value })} placeholder="Nome operacional" /></> : <><strong>{item.callsign || item.display_name || "Sem indicativo"}</strong><span>{item.display_name || "Sem nome operacional"}</span></>}<code>{item.serial_number}</code></div><div className="equipment-meta"><span>{item.model || item.payload_type || "Modelo não identificado"}</span>{item.equipment_type === "payload" ? <span>{isEditing ? <select value={draft.status} onChange={(event) => setDraft({ ...draft, status: event.target.value })}><option value="available">Disponível</option><option value="in_use">Em uso</option><option value="maintenance">Manutenção</option><option value="retired">Retirado</option></select> : item.status}</span> : <span className={`service-state ${item.online_status === "online" ? "is-online" : "is-offline"}`}><span />{item.online_status === "online" ? "Online" : "Offline"}</span>}</div>{canEdit ? <button className="icon-action" type="button" onClick={() => isEditing ? void save(item) : beginEdit(item)} aria-label={isEditing ? "Guardar equipamento" : "Editar equipamento"} title={isEditing ? "Guardar" : "Editar"}>{isEditing ? <Save size={17} /> : <Pencil size={17} />}</button> : null}</div>; })}</div> : <p className="empty-state">Ainda não existem equipamentos deste tipo.</p>}</section>)}</section>
+  </section></main>;
 }
 
 function App() {

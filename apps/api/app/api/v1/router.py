@@ -5,6 +5,7 @@ from app.api.v1.routes import (
     auth,
     dashboard,
     dji,
+    equipment,
     fleet,
     livestream,
     operations,
@@ -35,3 +36,4 @@ api_router.include_router(livestream.router)
 api_router.include_router(reports.router)
 api_router.include_router(operations.router)
 api_router.include_router(dashboard.router, dependencies=[Depends(require_roles(ALL_ROLES))])
+api_router.include_router(equipment.router)
