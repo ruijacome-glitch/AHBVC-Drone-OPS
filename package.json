@@ -2,7 +2,7 @@
   "name": "uas-platform",
   "private": true,
   "version": "0.1.0",
-  "description": "UAS Platform monorepo for AHBVC DJI Enterprise drone operations.",
+  "description": "AirSector monorepo for critical DJI Enterprise drone operations.",
   "workspaces": [
     "apps/web",
     "packages/*"
@@ -16,4 +16,3 @@
     "node": ">=20"
   }
 }
-

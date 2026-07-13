@@ -66,6 +66,7 @@ def test_pilot_jsbridge_config_includes_situation_awareness_websocket() -> None:
         payload = response.json()
         assert payload["setup_ready"] is True
         assert payload["mqtt_url"] == "tcp://mqtt.uas.ahbvc.org.pt:1883"
+        assert payload["platform_name"] == settings.platform_name
         assert payload["ws_host"].startswith(
             "wss://api.uas.ahbvc.org.pt/manage/api/v1/workspaces/"
         )

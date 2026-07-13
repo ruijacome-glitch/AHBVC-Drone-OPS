@@ -1,2 +1,1 @@
-"""UAS Platform API package."""
-
+"""AirSector API package."""

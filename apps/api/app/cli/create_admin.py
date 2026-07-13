@@ -9,7 +9,7 @@ from app.db.session import AsyncSessionLocal
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Create the initial UAS Platform administrator")
+    parser = argparse.ArgumentParser(description="Create the initial AirSector administrator")
     parser.add_argument("--email", required=True)
     parser.add_argument("--full-name", required=True)
     return parser.parse_args()

@@ -9,6 +9,8 @@ from app.services.pdf_reports import template_environment
 def test_mission_report_template_escapes_untrusted_values() -> None:
     html = template_environment.get_template("mission_report.html").render(
         logo_available=False,
+        platform_name="AirSector",
+        organisation_name="Test Organisation",
         report={
             "mission_id": uuid4(),
             "status": "closed",
@@ -30,6 +32,7 @@ def test_mission_report_template_escapes_untrusted_values() -> None:
     assert "&lt;script&gt;" in html
     assert "12/07/2026 12:00:00 UTC" in html
     assert "position: fixed" not in html
+    assert "Documento gerado por AirSector" in html
 
 
 def test_generate_report_requires_authentication() -> None:

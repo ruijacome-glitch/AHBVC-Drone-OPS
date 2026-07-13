@@ -1,6 +1,8 @@
-# UAS Platform
+# AirSector
 
-Professional UAS operations platform for Bombeiros Voluntarios de Cascais, focused on DJI Enterprise aircraft through DJI Pilot 2 and the official DJI Cloud API.
+AirSector is an aerial intelligence and critical-operations SaaS. This repository contains the initial AHBVC deployment, focused on DJI Enterprise aircraft through DJI Pilot 2 and the official DJI Cloud API.
+
+The current production domain remains `uas.ahbvc.org.pt`. Technical identifiers such as the repository name, Docker project, database names and authentication audience remain `uas-platform` until a separately planned infrastructure migration.
 
 ## MVP Scope
 
@@ -91,4 +93,5 @@ reliable temperature readings.
 - [Architecture](docs/architecture.md)
 - [DJI Pilot 2 setup](docs/dji-pilot2-setup.md)
 - [Authentication and RBAC](docs/authentication.md)
+- [AirSector brand transition](docs/brand-transition.md)
 - [Implementation phases](docs/phases.md)

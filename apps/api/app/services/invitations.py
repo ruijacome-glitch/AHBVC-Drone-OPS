@@ -27,11 +27,13 @@ async def send_user_invitation(
         full_name=full_name,
         roles=role_text,
         expiry_hours=settings.invitation_expire_hours,
+        platform_name=settings.platform_name,
+        organisation_name=settings.organisation_display_name,
     )
     text = (
         f"Olá {full_name},\n\n"
-        "A sua conta UAS Platform foi criada. Defina a sua password no endereço:\n"
+        f"A sua conta {settings.platform_name} foi criada. Defina a sua password no endereço:\n"
         f"{activation_url}\n\n"
         f"O convite é válido durante {settings.invitation_expire_hours} horas e só pode ser usado uma vez."
     )
-    await email_service.send_message([email], "Convite para a UAS Platform", text, html)
+    await email_service.send_message([email], f"Convite para {settings.platform_name}", text, html)

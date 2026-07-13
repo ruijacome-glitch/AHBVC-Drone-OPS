@@ -2,7 +2,7 @@
 
 ## Product Decision
 
-UAS Platform is a multi-tenant operational SaaS for emergency services. AHBVC
+AirSector is a multi-tenant operational SaaS for emergency services. AHBVC
 is the first organisation, pilot customer and validation environment. Its brand
 and local integrations are tenant configuration, not product defaults embedded
 in application logic.

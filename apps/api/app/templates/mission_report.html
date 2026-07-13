@@ -25,7 +25,7 @@
 <body>
   <header>
     {% if logo_available %}<img src="ahbvc.png" alt="AHBVC">{% endif %}
-    <div><p>Bombeiros Voluntários de Cascais</p><h1>Relatório de Missão UAS</h1></div>
+    <div><p>{{ organisation_name }} · {{ platform_name }}</p><h1>Relatório de Missão UAS</h1></div>
   </header>
   <section class="meta">
     <div class="item"><span>Missão</span><strong>{{ report.mission_id }}</strong></div>
@@ -47,6 +47,6 @@
     <tr><th>Velocidade máxima</th><td>{{ report.max_speed_mps or 0 }} m/s</td></tr>
     <tr><th>Bateria mínima</th><td>{{ (report.min_battery_percent ~ '%') if report.min_battery_percent is not none else '—' }}</td></tr>
   </table>
-  <footer>Documento gerado pela UAS Platform · {{ report.generated_at | datetime_pt('') }}</footer>
+  <footer>Documento gerado por {{ platform_name }} · {{ report.generated_at | datetime_pt('') }}</footer>
 </body>
 </html>

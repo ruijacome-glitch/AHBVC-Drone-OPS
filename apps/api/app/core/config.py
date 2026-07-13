@@ -8,6 +8,9 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     root_domain: str = "uas.ahbvc.org.pt"
+    platform_name: str = "AirSector"
+    platform_tagline: str = "Aerial intelligence for critical operations."
+    organisation_display_name: str = "Bombeiros Voluntarios de Cascais"
     database_url: str = "postgresql+asyncpg://uas_platform:uas_platform@postgres:5432/uas_platform"
     redis_url: str = "redis://redis:6379/0"
     api_cors_origins: str = "https://uas.ahbvc.org.pt,https://pilot.uas.ahbvc.org.pt"
@@ -29,7 +32,7 @@ class Settings(BaseSettings):
     dji_app_secret: str | None = None
     dji_app_basic_license: str | None = None
     dji_workspace_id: str | None = None
-    dji_workspace_name: str = "AHBVC UAS Platform"
+    dji_workspace_name: str = "AHBVC AirSector"
     dji_pilot_api_token: str | None = None
     dji_gateway_sn: str | None = None
     dji_gateway_model_domain: str = "2"
@@ -70,7 +73,7 @@ class Settings(BaseSettings):
     smtp_username: str | None = None
     smtp_password: str | None = None
     smtp_from_email: str | None = None
-    smtp_from_name: str = "AHBVC UAS Platform"
+    smtp_from_name: str = "AirSector | AHBVC"
     smtp_start_tls: bool = True
     smtp_use_tls: bool = False
     invitation_expire_hours: int = 24

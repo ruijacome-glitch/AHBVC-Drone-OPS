@@ -37,7 +37,10 @@ class PdfReportService:
     async def mission_report(self, data: dict[str, Any], trace_id: str) -> bytes:
         logo_path = APP_DIR / "assets" / "ahbvc.png"
         html = template_environment.get_template("mission_report.html").render(
-            report=data, logo_available=logo_path.exists()
+            report=data,
+            logo_available=logo_path.exists(),
+            platform_name=settings.platform_name,
+            organisation_name=settings.organisation_display_name,
         )
         files: list[tuple[str, tuple[str, bytes, str]]] = [
             ("files", ("index.html", html.encode("utf-8"), "text/html")),

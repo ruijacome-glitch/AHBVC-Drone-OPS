@@ -37,6 +37,8 @@ import "./styles.css";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
+const productName = "AirSector";
+const organisationName = "Bombeiros Voluntários de Cascais";
 
 type Theme = "light" | "dark";
 
@@ -433,7 +435,7 @@ function LoginPage({ onAuthenticated }: { onAuthenticated: (user: AuthUser) => v
     <main className="auth-page">
       <div className="auth-theme"><ThemeToggle compact /></div>
       <motion.section className="auth-panel" initial={reduceMotion ? false : { opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.24 }} aria-labelledby="login-title">
-        <header className="auth-brand"><img src="/ahbvc.png" alt="Logótipo dos Bombeiros Voluntários de Cascais" /><div><span>Bombeiros Voluntários de Cascais</span><strong>UAS Platform</strong></div></header>
+        <header className="auth-brand"><img src="/ahbvc.png" alt={`Logótipo dos ${organisationName}`} /><div><span>{organisationName}</span><strong>{productName}</strong></div></header>
         <div className="auth-copy"><p className="eyebrow">Acesso reservado</p><h1 id="login-title">Iniciar sessão</h1><p>Entre com a sua conta operacional para aceder à plataforma.</p></div>
         <form className="auth-form" onSubmit={submit}>
           <label htmlFor="login-email">Email institucional</label>
@@ -456,7 +458,7 @@ function AppSidebar({ active }: { active: NavigationPage }) {
   const isAdmin = user.roles.includes("Administrador");
   return (
     <aside className="sidebar" aria-label="Navegação principal">
-      <div className="brand-lockup"><img className="brand-logo" src="/ahbvc.png" alt="AHBVC" /><div><strong>UAS Platform</strong><span>AHBVC Drone OPS</span></div></div>
+      <div className="brand-lockup"><img className="brand-logo" src="/ahbvc.png" alt="AHBVC" /><div><strong>{productName}</strong><span>AHBVC · Critical Operations</span></div></div>
       <nav>
         <a className={`nav-link ${active === "operations" ? "active" : ""}`} href="/">Operações</a>
         <a className={`nav-link ${active === "history" ? "active" : ""}`} href="/history">Histórico de voo</a>
@@ -537,7 +539,7 @@ function ActivateAccountPage() {
     <main className="auth-page">
       <div className="auth-theme"><ThemeToggle compact /></div>
       <motion.section className="auth-panel" initial={reduceMotion ? false : { opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.24 }} aria-labelledby="activation-title">
-        <header className="auth-brand"><img src="/ahbvc.png" alt="Logótipo dos Bombeiros Voluntários de Cascais" /><div><span>Bombeiros Voluntários de Cascais</span><strong>UAS Platform</strong></div></header>
+        <header className="auth-brand"><img src="/ahbvc.png" alt={`Logótipo dos ${organisationName}`} /><div><span>{organisationName}</span><strong>{productName}</strong></div></header>
         {complete ? <div className="auth-complete"><CheckCircle2 size={38} /><h1 id="activation-title">Conta ativada</h1><p>A password foi definida. Já pode iniciar sessão na plataforma.</p><a className="primary-action" href="/">Iniciar sessão</a></div> : <>
           <div className="auth-copy"><p className="eyebrow">Ativação de conta</p><h1 id="activation-title">Definir password</h1><p>Escolha uma password segura para concluir o seu registo.</p></div>
           <form className="auth-form" onSubmit={activate}>
@@ -1524,7 +1526,7 @@ function PilotPage() {
         transition={{ duration: 0.22 }}
       >
         <div className="pilot-card-header">
-          <div className="pilot-brand"><img src="/ahbvc.png" alt="AHBVC" /><div><p className="eyebrow">DJI Pilot 2</p><h1 id="pilot-title">UAS Platform</h1></div></div>
+          <div className="pilot-brand"><img src="/ahbvc.png" alt="AHBVC" /><div><p className="eyebrow">DJI Pilot 2 · AHBVC</p><h1 id="pilot-title">{productName}</h1></div></div>
           <div className="pilot-actions"><ThemeToggle compact /><button className="icon-action" type="button" onClick={() => void endPilotSession()} aria-label="Terminar sessão" title="Terminar sessão"><LogOut size={18} /></button></div>
         </div>
         <p className="pilot-identity"><UserRound size={18} />{user.full_name}<span>{user.roles.join(" · ")}</span></p>

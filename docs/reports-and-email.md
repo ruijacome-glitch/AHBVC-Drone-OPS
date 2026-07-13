@@ -1,6 +1,6 @@
 # Reports and email
 
-UAS Platform generates mission PDFs through Gotenberg, an internal Docker
+AirSector generates mission PDFs through Gotenberg, an internal Docker
 service based on Chromium. Gotenberg has no Traefik labels or published ports
 and is reachable only from the Docker `internal` network.
 
@@ -30,7 +30,7 @@ SMTP_PORT=587
 SMTP_USERNAME=uas@example.org
 SMTP_PASSWORD=<secret>
 SMTP_FROM_EMAIL=uas@example.org
-SMTP_FROM_NAME=AHBVC UAS Platform
+SMTP_FROM_NAME=AirSector | AHBVC
 SMTP_START_TLS=true
 SMTP_USE_TLS=false
 ```
