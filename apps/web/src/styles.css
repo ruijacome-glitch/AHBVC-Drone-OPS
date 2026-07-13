@@ -1375,6 +1375,16 @@ h1 {
 .flight-count { display: flex; align-items: center; gap: 5px; color: var(--color-muted); }
 .flight-count strong { color: var(--color-foreground); }
 .flight-count span { font-size: 0.74rem; }
+.mission-view-action { justify-self: end; min-height: 40px; }
+.flight-list { overflow: hidden; margin: -1px 0 12px; padding: 14px 18px 16px 54px; border-left: 2px solid var(--color-accent); background: var(--color-muted); }
+.flight-list-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 10px; }
+.flight-list-heading span, .flight-row span { color: var(--color-muted); font-size: 0.82rem; }
+.flight-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 14px; padding: 10px 0; border-top: 1px solid var(--color-border); }
+.flight-row > div:first-child, .flight-actions { display: flex; align-items: center; gap: 10px; }
+.flight-row > div:first-child { flex-direction: column; align-items: flex-start; gap: 2px; }
+.compact-action { min-height: 38px; padding: 8px 11px; font-size: 0.82rem; }
+.danger-action { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; padding: 9px 12px; border: 1px solid #fecaca; border-radius: 6px; background: transparent; color: #b91c1c; cursor: pointer; font-weight: 600; transition: background-color 180ms ease, color 180ms ease, border-color 180ms ease; }
+.danger-action:hover { border-color: #ef4444; background: #fef2f2; }
 
 :root[data-theme="dark"] .sidebar {
   background: #111820;
@@ -1410,6 +1420,9 @@ h1 {
 :root[data-theme="dark"] .mission-status.status-aborted { background: #3b1d24; color: #fca5a5; }
 :root[data-theme="dark"] .mission-status.status-completed,
 :root[data-theme="dark"] .mission-status.status-archived { background: #25294d; color: #c7d2fe; }
+:root[data-theme="dark"] .flight-list { background: #151d27; }
+:root[data-theme="dark"] .danger-action { border-color: #7f1d1d; color: #fca5a5; }
+:root[data-theme="dark"] .danger-action:hover { background: #3b171b; }
 
 :root[data-theme="dark"] .offline,
 :root[data-theme="dark"] .service-state.is-offline {
@@ -1585,7 +1598,11 @@ h1 {
   .mission-row { grid-template-columns: minmax(0, 1fr) auto; padding: 12px 0; }
   .mission-row .flight-count,
   .mission-row time { grid-column: 1; }
+  .mission-row .mission-view-action { grid-column: 1; justify-self: start; }
   .mission-row .add-flight-action { grid-column: 2; grid-row: 2 / span 2; }
+  .flight-list { padding-left: 16px; }
+  .flight-row { grid-template-columns: 1fr; align-items: start; }
+  .flight-actions { flex-wrap: wrap; }
 
   .dashboard-metrics,
   .quick-action-grid {

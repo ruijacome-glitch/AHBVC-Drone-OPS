@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import {
   Activity,
   ArrowRight,
+  Check,
   CheckCircle2,
   CircleDashed,
   Clock3,
@@ -1105,12 +1106,25 @@ type OperationalMission = {
   flight_count: number;
 };
 
+type OperationalFlight = {
+  id: string;
+  mission_id: string;
+  sequence_number: number;
+  status: "planned" | "active" | "completed" | "aborted";
+  notes: string | null;
+  started_at: string | null;
+  ended_at: string | null;
+  created_at: string;
+};
+
 function MissionManagementPage() {
   const { user } = useAuth();
   const reduceMotion = useReducedMotion();
   const canWrite = user.roles.some((role) => role === "Administrador" || role === "Operador");
   const [occurrences, setOccurrences] = React.useState<OperationalOccurrence[]>([]);
   const [missions, setMissions] = React.useState<OperationalMission[]>([]);
+  const [flightsByMission, setFlightsByMission] = React.useState<Record<string, OperationalFlight[]>>({});
+  const [expandedMission, setExpandedMission] = React.useState<string | null>(null);
   const [formMode, setFormMode] = React.useState<"occurrence" | "mission" | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [submitting, setSubmitting] = React.useState(false);
@@ -1122,6 +1136,7 @@ function MissionManagementPage() {
   const [missionOccurrence, setMissionOccurrence] = React.useState("");
   const [trainingMission, setTrainingMission] = React.useState(false);
   const [addingFlight, setAddingFlight] = React.useState<string | null>(null);
+  const [flightAction, setFlightAction] = React.useState<string | null>(null);
 
   const loadOperations = React.useCallback(async () => {
     setLoading(true);
@@ -1132,7 +1147,13 @@ function MissionManagementPage() {
       ]);
       if (!occurrenceResponse.ok || !missionResponse.ok) throw new Error("Dados operacionais indisponíveis.");
       setOccurrences((await occurrenceResponse.json()) as OperationalOccurrence[]);
-      setMissions((await missionResponse.json()) as OperationalMission[]);
+      const nextMissions = (await missionResponse.json()) as OperationalMission[];
+      setMissions(nextMissions);
+      const flightEntries = await Promise.all(nextMissions.map(async (mission) => {
+        const response = await authenticatedFetch(`/api/v1/operations/missions/${mission.id}/flights`, { cache: "no-store" });
+        return [mission.id, response.ok ? await response.json() as OperationalFlight[] : []] as const;
+      }));
+      setFlightsByMission(Object.fromEntries(flightEntries));
     } catch (reason) {
       setMessage(reason instanceof Error ? reason.message : "Não foi possível carregar as missões.");
     } finally {
@@ -1208,6 +1229,23 @@ function MissionManagementPage() {
     } finally { setAddingFlight(null); }
   }
 
+  async function updateFlightStatus(flightId: string, nextStatus: "active" | "completed" | "aborted") {
+    setFlightAction(flightId); setMessage(null);
+    try {
+      const response = await authenticatedFetch(`/api/v1/operations/flights/${flightId}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: nextStatus }),
+      });
+      const result = (await response.json().catch(() => ({}))) as { detail?: string };
+      if (!response.ok) throw new Error(result.detail ?? "Não foi possível atualizar o voo.");
+      setMessage(nextStatus === "active" ? "Voo iniciado. A telemetria nova ficará associada a este voo." : nextStatus === "completed" ? "Voo concluído." : "Voo abortado.");
+      await loadOperations();
+    } catch (reason) {
+      setMessage(reason instanceof Error ? reason.message : "Não foi possível atualizar o voo.");
+    } finally { setFlightAction(null); }
+  }
+
   const statusLabel: Record<string, string> = {
     draft: "Rascunho", ready: "Pronta", active: "Em curso", completed: "Concluída",
     aborted: "Abortada", archived: "Arquivada", planned: "Planeada", in_progress: "Em curso",
@@ -1252,7 +1290,7 @@ function MissionManagementPage() {
         <section className="panel missions-list" aria-label="Missões registadas">
           <div className="panel-heading"><PlaneTakeoff size={20} /><div><h2>Missões registadas</h2><span>Cada missão agrega os seus voos, telemetria, streams e media.</span></div></div>
           {loading ? <div className="dashboard-empty"><CircleDashed className="spin" size={24} /><strong>A carregar missões</strong></div> : missions.length ? <div className="mission-table" role="table">
-            {missions.map((mission) => <div className="mission-row" role="row" key={mission.id}><div className="mission-main"><strong>{mission.title}</strong><span>{mission.is_training ? "Treino" : mission.occurrence_code ? `${mission.occurrence_code} · ${mission.occurrence_title}` : "Sem ocorrência"}</span></div><span className={`mission-status status-${mission.status}`}>{statusLabel[mission.status] ?? mission.status}</span><div className="flight-count"><Radio size={16} /><strong>{mission.flight_count}</strong><span>{mission.flight_count === 1 ? "voo" : "voos"}</span></div><time dateTime={mission.created_at}>{new Date(mission.created_at).toLocaleDateString("pt-PT")}</time>{canWrite ? <motion.button className="add-flight-action" type="button" onClick={() => void addFlight(mission.id)} disabled={addingFlight === mission.id} whileTap={{ scale: 0.97 }} title="Adicionar voo planeado"><Plus size={17} />{addingFlight === mission.id ? "A adicionar" : "Adicionar voo"}</motion.button> : null}</div>)}
+            {missions.map((mission) => <React.Fragment key={mission.id}><div className="mission-row" role="row"><div className="mission-main"><strong>{mission.title}</strong><span>{mission.is_training ? "Treino" : mission.occurrence_code ? `${mission.occurrence_code} · ${mission.occurrence_title}` : "Sem ocorrência"}</span></div><span className={`mission-status status-${mission.status}`}>{statusLabel[mission.status] ?? mission.status}</span><div className="flight-count"><Radio size={16} /><strong>{mission.flight_count}</strong><span>{mission.flight_count === 1 ? "voo" : "voos"}</span></div><time dateTime={mission.created_at}>{new Date(mission.created_at).toLocaleDateString("pt-PT")}</time><button className="secondary-action mission-view-action" type="button" onClick={() => setExpandedMission((current) => current === mission.id ? null : mission.id)} aria-expanded={expandedMission === mission.id}>{expandedMission === mission.id ? "Fechar" : "Ver voos"}</button>{canWrite ? <motion.button className="add-flight-action" type="button" onClick={() => void addFlight(mission.id)} disabled={addingFlight === mission.id} whileTap={{ scale: 0.97 }} title="Adicionar voo planeado"><Plus size={17} />{addingFlight === mission.id ? "A adicionar" : "Adicionar voo"}</motion.button> : null}</div>{expandedMission === mission.id ? <motion.div className="flight-list" initial={reduceMotion ? false : { opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }}><div className="flight-list-heading"><strong>Voos desta missão</strong><span>{mission.objective}</span></div>{(flightsByMission[mission.id] ?? []).map((flight) => <div className="flight-row" key={flight.id}><div><strong>Voo {flight.sequence_number}</strong><span>{flight.started_at ? new Date(flight.started_at).toLocaleString("pt-PT") : "Ainda não iniciado"}</span></div><span className={`mission-status status-${flight.status}`}>{statusLabel[flight.status]}</span>{canWrite && flight.status === "planned" ? <motion.button className="primary-action compact-action" type="button" onClick={() => void updateFlightStatus(flight.id, "active")} disabled={flightAction === flight.id} whileTap={{ scale: 0.97 }}><PlaneTakeoff size={16} />Iniciar voo</motion.button> : null}{canWrite && flight.status === "active" ? <div className="flight-actions"><motion.button className="secondary-action compact-action" type="button" onClick={() => void updateFlightStatus(flight.id, "completed")} disabled={flightAction === flight.id} whileTap={{ scale: 0.97 }}><Check size={16} />Concluir</motion.button><motion.button className="danger-action compact-action" type="button" onClick={() => void updateFlightStatus(flight.id, "aborted")} disabled={flightAction === flight.id} whileTap={{ scale: 0.97 }}><ShieldAlert size={16} />Abortar</motion.button></div> : null}</div>)}</motion.div> : null}</React.Fragment>)}
           </div> : <div className="dashboard-empty"><PlaneTakeoff size={26} /><strong>Sem missões registadas</strong><span>Crie a primeira ocorrência e associe-lhe uma missão operacional.</span></div>}
         </section>
       </section>

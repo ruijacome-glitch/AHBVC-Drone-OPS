@@ -1,6 +1,6 @@
 import json
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -89,6 +89,11 @@ class MissionResponse(BaseModel):
 
 class CreateFlightRequest(BaseModel):
     notes: str | None = Field(default=None, max_length=2000)
+
+
+class UpdateFlightStatusRequest(BaseModel):
+    status: Literal["active", "completed", "aborted"]
+    reason: str | None = Field(default=None, max_length=500)
 
 
 class FlightResponse(BaseModel):
@@ -469,3 +474,181 @@ async def create_flight(
             {"mission_id": str(mission_id), "sequence": row["sequence_number"]},
         )
         return FlightResponse(**dict(row))
+
+
+@router.patch(
+    "/flights/{flight_id}/status",
+    response_model=FlightResponse,
+    dependencies=[Depends(verify_csrf)],
+)
+async def update_flight_status(
+    flight_id: UUID,
+    payload: UpdateFlightStatusRequest,
+    user: Annotated[AuthenticatedUser, Depends(require_roles(OPERATIONS_WRITE_ROLES))],
+) -> FlightResponse:
+    organisation_id = _tenant_required(user)
+    async with AsyncSessionLocal() as session, session.begin():
+        flight_result = await session.execute(
+            text(
+                """
+                SELECT f.id, f.mission_id, f.sequence_number, f.status, f.notes,
+                       f.started_at, f.ended_at, f.created_at,
+                       f.drone_id, f.controller_id, m.status AS mission_status
+                FROM flights f
+                JOIN missions m ON m.id = f.mission_id
+                WHERE f.id = :flight_id
+                  AND f.organisation_id = CAST(:organisation_id AS uuid)
+                FOR UPDATE
+                """
+            ),
+            {"flight_id": flight_id, "organisation_id": organisation_id},
+        )
+        flight = flight_result.mappings().first()
+        if flight is None:
+            raise HTTPException(status_code=404, detail="Flight not found")
+
+        current_status = flight["status"]
+        requested_status = payload.status
+        valid_transitions = {
+            "planned": {"active"},
+            "active": {"completed", "aborted"},
+            "completed": set(),
+            "aborted": set(),
+        }
+        if requested_status not in valid_transitions[current_status]:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Cannot change flight from {current_status} to {requested_status}",
+            )
+
+        if requested_status == "active":
+            active = await session.execute(
+                text(
+                    """
+                    SELECT id FROM flights
+                    WHERE organisation_id = CAST(:organisation_id AS uuid)
+                      AND status = 'active'
+                      AND id <> :flight_id
+                      AND (drone_id = :drone_id OR controller_id = :controller_id)
+                    LIMIT 1
+                    """
+                ),
+                {
+                    "organisation_id": organisation_id,
+                    "flight_id": flight_id,
+                    "drone_id": flight["drone_id"],
+                    "controller_id": flight["controller_id"],
+                },
+            )
+            if active.scalar_one_or_none() is not None:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="The assigned drone or controller already has an active flight",
+                )
+
+        if requested_status == "active":
+            updated = await session.execute(
+                text(
+                    """
+                    UPDATE flights
+                    SET status = 'active', started_at = COALESCE(started_at, now()),
+                        updated_at = now()
+                    WHERE id = :flight_id
+                    RETURNING id, mission_id, sequence_number, status, notes,
+                              started_at, ended_at, created_at
+                    """
+                ),
+                {"flight_id": flight_id},
+            )
+            await session.execute(
+                text(
+                    """
+                    UPDATE missions
+                    SET status = 'active', started_at = COALESCE(started_at, now()),
+                        updated_at = now()
+                    WHERE id = :mission_id
+                    """
+                ),
+                {"mission_id": flight["mission_id"]},
+            )
+            await session.execute(
+                text(
+                    """
+                    UPDATE flight_tracks
+                    SET flight_id = :flight_id
+                    WHERE flight_id IS NULL AND drone_id = :drone_id AND ended_at IS NULL
+                    """
+                ),
+                {"flight_id": flight_id, "drone_id": flight["drone_id"]},
+            )
+        else:
+            updated = await session.execute(
+                text(
+                    """
+                    UPDATE flights
+                    SET status = :status, ended_at = COALESCE(ended_at, now()),
+                        updated_at = now()
+                    WHERE id = :flight_id
+                    RETURNING id, mission_id, sequence_number, status, notes,
+                              started_at, ended_at, created_at
+                    """
+                ),
+                {"flight_id": flight_id, "status": requested_status},
+            )
+            remaining = await session.execute(
+                text(
+                    """
+                    SELECT COUNT(*) FROM flights
+                    WHERE mission_id = :mission_id AND status IN ('planned', 'active')
+                    """
+                ),
+                {"mission_id": flight["mission_id"]},
+            )
+            if remaining.scalar_one() == 0:
+                await session.execute(
+                    text(
+                        """
+                        UPDATE missions
+                        SET status = :mission_status, ended_at = COALESCE(ended_at, now()),
+                            updated_at = now()
+                        WHERE id = :mission_id
+                        """
+                    ),
+                    {
+                        "mission_id": flight["mission_id"],
+                        "mission_status": "aborted" if requested_status == "aborted" else "completed",
+                    },
+                )
+
+        await session.execute(
+            text(
+                """
+                INSERT INTO mission_events (
+                  organisation_id, mission_id, actor_user_id, event_type,
+                  from_status, to_status, reason, metadata
+                ) VALUES (
+                  CAST(:organisation_id AS uuid), :mission_id, :actor_id, 'flight.status_changed',
+                  :from_status, :to_status, :reason,
+                  jsonb_build_object('flight_id', CAST(:flight_id AS text))
+                )
+                """
+            ),
+            {
+                "organisation_id": organisation_id,
+                "mission_id": flight["mission_id"],
+                "actor_id": user.id,
+                "from_status": current_status,
+                "to_status": requested_status,
+                "reason": payload.reason,
+                "flight_id": str(flight_id),
+            },
+        )
+        await _audit(
+            session,
+            user,
+            f"flight.{requested_status}",
+            "flight",
+            flight_id,
+            {"mission_id": str(flight["mission_id"]), "reason": payload.reason},
+        )
+        return FlightResponse(**dict(updated.mappings().one()))

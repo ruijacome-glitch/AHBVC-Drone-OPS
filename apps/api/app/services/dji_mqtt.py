@@ -339,12 +339,12 @@ class DjiMqttConsumer:
                 text(
                     """
                     INSERT INTO telemetry_points (
-                      drone_id, controller_id, drone_serial, gateway_serial, model, position,
+                      drone_id, controller_id, flight_id, drone_serial, gateway_serial, model, position,
                       altitude_m, speed_mps, heading_deg, pitch_deg, roll_deg, yaw_deg,
                       battery_percent, gps_status, rtk_status, active_payload, flight_mode,
                       link_quality, source_topic, payload, observed_at
                     )
-                    SELECT d.id, c.id, :drone_serial, :gateway_serial, :model,
+                    SELECT d.id, c.id, af.id, :drone_serial, :gateway_serial, :model,
                       CASE WHEN :longitude BETWEEN -180 AND 180 AND :latitude BETWEEN -90 AND 90
                         AND (:latitude <> 0 OR :longitude <> 0)
                         THEN ST_SetSRID(ST_MakePoint(:longitude, :latitude), 4326)::geography END,
@@ -352,6 +352,7 @@ class DjiMqttConsumer:
                       :battery_percent, :gps_status, :rtk_status, :active_payload, :flight_mode,
                       :link_quality, :source_topic, CAST(:payload AS jsonb), :observed_at
                     FROM drones d JOIN controllers c ON c.gateway_sn = :gateway_serial
+                    LEFT JOIN flights af ON af.drone_id = d.id AND af.status = 'active'
                     WHERE d.serial_number = :drone_serial
                     """
                 ),
@@ -377,12 +378,14 @@ class DjiMqttConsumer:
                     await session.execute(
                         text(
                             """
-                            INSERT INTO flight_tracks (drone_id, track, started_at)
-                            SELECT id, ST_MakeLine(
+                            INSERT INTO flight_tracks (mission_id, drone_id, flight_id, track, started_at)
+                            SELECT af.mission_id, d.id, af.id, ST_MakeLine(
                               ST_Force3D(ST_SetSRID(ST_MakePoint(:longitude, :latitude, :altitude_m), 4326)),
                               ST_Force3D(ST_SetSRID(ST_MakePoint(:longitude, :latitude, :altitude_m), 4326))
                             ), :observed_at
-                            FROM drones WHERE serial_number = :drone_serial
+                            FROM drones d
+                            LEFT JOIN flights af ON af.drone_id = d.id AND af.status = 'active'
+                            WHERE d.serial_number = :drone_serial
                             """
                         ),
                         {"drone_serial": telemetry.drone_serial, "longitude": telemetry.longitude,
